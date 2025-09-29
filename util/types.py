@@ -56,13 +56,13 @@ class Predictor(Protocol):
 
     Implementations must:
       - predict(n: int) -> Sequence[float]: return the next n predictions in order.
-      - update(quantized_residuals: Sequence[int]) -> None: update internal state using
-        the quantized residuals that were actually used (ints).
+      - update(quantized_values: Sequence[int]) -> None: update internal state using
+        the quantized values that were actually used (ints).
     """
 
     def predict(self, n: int = 1) -> Sequence[float]: ...
 
-    def update(self, quantized_residuals: Sequence[int]) -> None: ...
+    def update(self, quantized_values: Sequence[int]) -> None: ...
 
 
 @runtime_checkable
@@ -83,12 +83,12 @@ class Coder(Protocol):
 
 @runtime_checkable
 class Quantizer(Protocol):
-    def residual_to_symbol(self, residual: float) -> int:
-        """Quantize residual (float) -> integer symbol."""
+    def value_to_symbol(self, value: float) -> int:
+        """Quantize value (float) -> integer symbol."""
         ...
 
-    def symbol_to_residual(self, symbol: int) -> float:
-        """Dequantize symbol -> reconstructed residual (float)."""
+    def symbol_to_value(self, symbol: int) -> float:
+        """Dequantize symbol -> reconstructed value (float)."""
         ...
 
     def symbol_range(self) -> int:

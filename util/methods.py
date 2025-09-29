@@ -1,7 +1,9 @@
 from memory_profiler import memory_usage
 import numpy as np
 import time
-
+from typing import List,Dict ,Tuple
+from .types import Quantizer
+from collections import Counter
 
 def profile_memory(func, *args, **kwargs):
     """
@@ -54,3 +56,25 @@ def build_time_series_dataset(series, input_size, output_size, shuffle=True):
         X, Y = X[indices], Y[indices]
 
     return X, Y
+
+
+def build_frequency_table(values: List[float],quantizer : Quantizer) -> Dict[int, int]:
+    """
+    Convert the data into a frequency table
+    """
+    
+    symbols = [quantizer.value_to_symbol(i) for i in values]
+    freq_table = Counter(symbols)
+    return freq_table   
+
+
+def build_cdf(freq_table :Dict[int,int]) :
+    """
+    Build CDF table 
+    """
+    cdf ={}
+    cum =0
+    for symbol, frequency in sorted(freq_table.items()):
+        cdf[symbol]=cum
+        cum+=frequency
+    return cum , cdf

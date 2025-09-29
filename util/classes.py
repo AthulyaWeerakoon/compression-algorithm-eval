@@ -1,15 +1,16 @@
-from types import Predictor, Coder, Quantizer, Encoder, Decoder
-from typing import Sequence, List, Optional
+from .types import Predictor, Coder, Quantizer, Encoder, Decoder
+from typing import Sequence, List, Optional ,Dict
 import numpy as np
+from util.methods import build_cdf
 
 
 class UniformQuantizer(Quantizer):
     """
-    Uniform scalar quantizer for residuals.
+    Uniform scalar quantizer for values.
 
-    Maps residual -> integer symbol via rounding: q = round(residual / step).
+    Maps value -> integer symbol via rounding: q = round(value / step).
     Symbol mapping has an offset so output is non-negative (0..levels-1).
-    Reconstruction: residual_hat = (q - offset) * step.
+    Reconstruction: value_hat = (q - offset) * step.
     """
 
     def __init__(self, step: float, levels: int = 65536, clip: bool = True):
@@ -22,8 +23,8 @@ class UniformQuantizer(Quantizer):
         self.max_sym = levels - 1
         self.clip = bool(clip)
 
-    def residual_to_symbol(self, residual: float) -> int:
-        q = int(np.round(residual / self.step))
+    def value_to_symbol(self, value: float) -> int:
+        q = int(np.round(value / self.step))
         sym = q + self.offset
         if self.clip:
             sym = max(self.min_sym, min(sym, self.max_sym))
@@ -32,7 +33,7 @@ class UniformQuantizer(Quantizer):
                 raise ValueError("Quantized symbol out of range.")
         return int(sym)
 
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         q = int(symbol) - self.offset
         return q * self.step
 
@@ -47,8 +48,8 @@ class UniformQuantizerByRange(Quantizer):
     Computes step size automatically from [min_val, max_val] and number of levels:
         step = (max_val - min_val) / (levels - 1)
 
-    - residual_to_symbol: maps values in [min_val, max_val] to integers [0 .. levels-1]
-    - symbol_to_residual: reconstructs a float value from integer symbol
+    - value_to_symbol: maps values in [min_val, max_val] to integers [0 .. levels-1]
+    - symbol_to_value: reconstructs a float value from integer symbol
     """
 
     def __init__(self, min_val: float, max_val: float, levels: int = 65536, clip: bool = True):
@@ -61,9 +62,9 @@ class UniformQuantizerByRange(Quantizer):
         self.step = (self.max_val - self.min_val) / (self.levels - 1)
         self.clip = bool(clip)
 
-    def residual_to_symbol(self, residual: float) -> int:
+    def value_to_symbol(self, value: float) -> int:
         """Quantize value in [min_val, max_val] to integer symbol."""
-        q = int(np.round((residual - self.min_val) / self.step))
+        q = int(np.round((value - self.min_val) / self.step))
         if self.clip:
             q = max(0, min(q, self.levels - 1))
         else:
@@ -71,7 +72,7 @@ class UniformQuantizerByRange(Quantizer):
                 raise ValueError("Value outside quantization range.")
         return q
 
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         """De-quantize integer symbol back to representative value."""
         if not (0 <= symbol < self.levels):
             raise ValueError("Symbol out of range.")
@@ -79,7 +80,7 @@ class UniformQuantizerByRange(Quantizer):
 
     def symbol_range(self) -> int:
         return self.levels
-
+    
 
 class LPCEncoder(Encoder):
     """
@@ -87,9 +88,9 @@ class LPCEncoder(Encoder):
 
     Workflow (per sample or per-batch):
       1. pred = predictor.predict(n=1 or batch_size)
-      2. residual = actual - pred
-      3. q_sym = quantizer.residual_to_symbol(residual)  # quantize BEFORE updating predictor
-      4. predictor.update([q_sym ...])                     # predictor receives quantized residuals
+      2. value = actual - pred
+      3. q_sym = quantizer.value_to_symbol(value)  # quantize BEFORE updating predictor
+      4. predictor.update([q_sym ...])                     # predictor receives quantized values
       5. collect q_sym into list to pass to coder.encode_symbols
 
     Important: predictor.update is called *before* coder.encode_symbols so the predictor at the encoder
@@ -127,12 +128,12 @@ class LPCEncoder(Encoder):
             assert preds.shape[0] == b, "predictor.predict(b) must return b predictions"
 
             actuals = xs[i:i + b]
-            residuals = actuals - preds  # float residuals
+            values = actuals - preds  # float values
 
-            # Quantize residuals to symbols
-            syms = [self.quantizer.residual_to_symbol(float(r)) for r in residuals]
+            # Quantize values to symbols
+            syms = [self.quantizer.value_to_symbol(float(r)) for r in values]
 
-            # Update predictor with quantized residuals BEFORE encoding (encoder-side update)
+            # Update predictor with quantized values BEFORE encoding (encoder-side update)
             self.predictor.update(syms)
 
             symbols.extend(syms)
@@ -148,9 +149,9 @@ class LPCDecoder(Decoder):
     LPC-style decoder that uses the same Predictor and Coder types as encoder.
 
     Workflow (per sample or per-batch):
-      1. preds = predictor.predict(n=batch_size)   # prediction BEFORE seeing quantized residual
+      1. preds = predictor.predict(n=batch_size)   # prediction BEFORE seeing quantized value
       2. q_syms = coder.decode_symbols(bitstream, n=batch_size)
-      3. reconstruct = preds + quantizer.symbol_to_residual(q_sym)
+      3. reconstruct = preds + quantizer.symbol_to_value(q_sym)
       4. predictor.update(q_syms)                   # update AFTER decoding so next predictions match encoder
     """
 
@@ -200,13 +201,62 @@ class LPCDecoder(Decoder):
 
             # reconstruct and update predictor AFTER decoding
             for idx, sym in enumerate(syms):
-                residual_hat = self.quantizer.symbol_to_residual(sym)
-                value_hat = float(preds[idx]) + float(residual_hat)
+                value_hat = self.quantizer.symbol_to_value(sym)
+                value_hat = float(preds[idx]) + float(value_hat)
                 recon.append(value_hat)
 
-            # Now update predictor with quantized residuals (as ints)
+            # Now update predictor with quantized values (as ints)
             self.predictor.update(syms)
 
             i += b
 
         return recon
+    
+
+
+class StaticANSEncoder(Encoder):
+    """
+    
+    """
+    def __init__(self,freq_table: Dict[int,int]):
+        self.freq_table = freq_table
+        self.total ,self.cdf = build_cdf(freq_table)
+
+    def encode(self,data_list : List[int]) -> int:
+        """
+        
+        """
+        state = 1
+        for symbol in reversed(data_list):
+            f = self.freq_table[symbol]
+            c = self.cdf[symbol]
+            state = (state // f) * self.total + c + (state% f)
+
+        return state        
+
+
+
+class StaticANSDecoder:
+    def __init__(self, freq_table: Dict[int,int]):
+        self.freq_table = freq_table
+        self.total = sum(freq_table.values())
+        self.cdf_ranges = {}
+        self.n, self.cdf = build_cdf(freq_table)
+        cum = 0
+        for symbol, frequency in sorted(freq_table.items()):
+            self.cdf_ranges[symbol] = (cum, cum + frequency)
+            cum += frequency
+
+    def decode(self, state: int) -> List[int]:
+        """
+        """
+        result = []
+        for _ in range(self.n):
+            x = state % self.total
+            for sym, (lo, hi) in self.cdf_ranges.items():
+                if lo <= x < hi:
+                    result.append(sym)
+                    f = self.freq_table[sym]
+                    state = f * (state // self.total) + (x - lo)
+                    break
+        return list(reversed(result))
