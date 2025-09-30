@@ -76,5 +76,5 @@ def build_cdf(freq_table :Dict[int,int]) :
     cum = 0
     for symbol, frequency in sorted(freq_table.items()):
         cdf[symbol]=cum
-        cum+=frequency
+        cum += frequency
     return cum , cdf
