@@ -260,6 +260,17 @@ class StaticANSDecoder:
 
     def decode(self, state: int) -> List[int]:
         """
+        Decodes an integer ANS state into the original list of symbols.
+
+        Parameters:
+            state (int): The ANS state integer to decode, as produced by StaticANSEncoder.encode.
+
+        Returns:
+            List[int]: The decoded list of integer symbols, in original order.
+
+        Decoding algorithm:
+            Iteratively extracts symbols from the ANS state using the frequency table and CDF ranges,
+            reconstructing the original sequence in reverse, then returns it in correct order.
         """
         result = []
         for _ in range(self.n):
