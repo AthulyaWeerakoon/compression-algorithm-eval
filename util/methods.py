@@ -1,8 +1,8 @@
 from memory_profiler import memory_usage
 import numpy as np
 import time
-from typing import List,Dict ,Tuple
-from .types import Quantizer
+from typing import List,Dict 
+from util.types_protocol import Quantizer
 from collections import Counter
 
 def profile_memory(func, *args, **kwargs):

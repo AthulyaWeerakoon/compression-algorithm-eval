@@ -1,6 +1,6 @@
 from typing import Any
 import numpy as np
-from util.types import Encoder, Decoder
+from util.types_protocol import Encoder, Decoder
 from util.methods import profile_memory
 
 

@@ -1,4 +1,4 @@
-from .types import Predictor, Coder, Quantizer, Encoder, Decoder
+from util.types_protocol import Predictor, Coder, Quantizer, Encoder, Decoder
 from typing import Sequence, List, Optional, Dict
 import numpy as np
 from util.methods import build_cdf
