@@ -230,7 +230,7 @@ class StaticANSEncoder(Encoder):
         for symbol in reversed(data_list):
             f = self.freq_table[symbol]
             c = self.cdf[symbol]
-            state = (state // f) * self.total + c + (state% f)
+            state = (state // f) * self.total + c + (state % f)
 
         return state        
 
