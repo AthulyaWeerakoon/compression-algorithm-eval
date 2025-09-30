@@ -216,7 +216,9 @@ class LPCDecoder(Decoder):
 
 class StaticANSEncoder(Encoder):
     """
-    
+    StaticANSEncoder encodes a sequence of integer symbols using static Asymmetric Numeral Systems (ANS).
+    It uses a provided frequency table to build a cumulative distribution function (CDF) for efficient encoding.
+    The encode method processes a list of symbols and returns the final ANS state representing the encoded data.
     """
     def __init__(self,freq_table: Dict[int,int]):
         self.freq_table = freq_table
