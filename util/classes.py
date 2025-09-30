@@ -226,7 +226,16 @@ class StaticANSEncoder(Encoder):
 
     def encode(self, data_list: List[int]) -> int:
         """
-        
+        Encodes a list of integer symbols into a single ANS state integer using a static frequency table.
+
+        Parameters:
+            data_list (List[int]): List of integer symbols to encode.
+
+        Returns:
+            int: The final ANS state after encoding all symbols.
+
+        Encoding algorithm:
+            Processes symbols in reverse order, updating the ANS state using the frequency table and cumulative distribution function (CDF).
         """
         state = 1
         for symbol in reversed(data_list):
