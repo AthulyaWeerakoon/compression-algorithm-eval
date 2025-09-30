@@ -68,7 +68,7 @@ def build_frequency_table(values: List[float],quantizer : Quantizer) -> Dict[int
     return freq_table   
 
 
-def build_cdf(freq_table :Dict[int,int]) :
+def build_cdf(freq_table: Dict[int, int]):
     """
     Build CDF table 
     """
