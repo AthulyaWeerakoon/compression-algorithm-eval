@@ -222,7 +222,7 @@ class StaticANSEncoder(Encoder):
         self.freq_table = freq_table
         self.total ,self.cdf = build_cdf(freq_table)
 
-    def encode(self,data_list : List[int]) -> int:
+    def encode(self, data_list: List[int]) -> int:
         """
         
         """
