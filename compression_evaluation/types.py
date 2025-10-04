@@ -1,5 +1,4 @@
-from typing import Protocol, runtime_checkable, Any, Sequence, List, Optional
-import numpy as np
+from typing import Protocol, runtime_checkable, Any, Sequence, List
 
 
 @runtime_checkable

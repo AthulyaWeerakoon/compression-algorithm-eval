@@ -1,20 +1,19 @@
-[project]
+[tool.poetry]
 name = "compression-evaluation"
 version = "0.1.0"
 description = "Package used to evaluate compression algorithms, specifically predictive coding algorithms that use ANS for compression"
 authors = [
-    {name = "AthulyaWeerakoon",email = "55914834+AthulyaWeerakoon@users.noreply.github.com"}
+    "Athulya Weerakoon <athulyaweerakoon@gmail.com>",
+    "Arosh Upathilak <aroshupathilak@gmail.com>"
 ]
-license = {file = "LICENSE"}
+license = "MIT"
 readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "memory-profiler (>=0.61.0,<0.62.0)",
-    "numpy (>=2.3.2,<3.0.0)"
-]
+packages = [{ include = "compression_evaluation"}]
 
-[project.settings]
-package-mode = false
+[tool.poetry.dependencies]
+python = ">=3.12"
+memory-profiler = "^0.61.0"
+numpy = ">=2.3.2"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

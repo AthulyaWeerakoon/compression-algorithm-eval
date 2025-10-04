@@ -126,4 +126,4 @@ test = ["pytest", "pytest-xdist", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "ed201831572338e1f65b940114e788ecfe92b89f2bc184ff769dac5d8d63593c"
+content-hash = "8906fecbd10bd29759d082338d4a235e493f095ad7272c311b195b8b36f6838e"
