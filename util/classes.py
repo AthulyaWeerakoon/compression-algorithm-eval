@@ -223,7 +223,7 @@ class StaticANSEncoder(Encoder):
     """
     def __init__(self, freq_table: Dict[int, int]):
         self.freq_table = freq_table
-        self.total ,self.cdf = build_cdf(freq_table)
+        self.total, self.cdf = build_cdf(freq_table)
 
     def encode(self, data_list: List[int]) -> bytes:
         """
