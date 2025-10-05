@@ -58,7 +58,7 @@ def build_time_series_dataset(series, input_size, output_size, shuffle=True):
     return X, Y
 
 
-def build_frequency_table(values: List[float],quantizer : Quantizer) -> Dict[int, int]:
+def build_frequency_table(values: List[float], quantizer : Quantizer) -> Dict[int, int]:
     """
     Convert the data into a frequency table
     """
