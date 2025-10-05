@@ -285,6 +285,8 @@ class StaticANSDecoder(Decoder):
             sym = self.symbols[idx]
 
             result.append(sym)
+            if sym not in self.freq_table:
+                raise ValueError(f"Decoded symbol {sym} not found in frequency table.")
             f = self.freq_table[sym]
             lo = self.bounds[idx]
             state = f * (state // self.total) + (x - lo)
