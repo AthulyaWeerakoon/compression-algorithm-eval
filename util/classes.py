@@ -247,7 +247,7 @@ class StaticANSEncoder(Encoder):
 
 
 
-class StaticANSDecoder:
+class StaticANSDecoder(Decoder):
     def __init__(self, freq_table: Dict[int,int]):
         self.freq_table = freq_table
         self.total = sum(freq_table.values())
