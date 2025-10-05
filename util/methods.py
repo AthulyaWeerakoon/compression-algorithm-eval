@@ -1,7 +1,7 @@
 from memory_profiler import memory_usage
 import numpy as np
 import time
-from typing import List,Dict 
+from typing import List, Dict 
 from util.types import Quantizer
 from collections import Counter
 
