@@ -70,12 +70,20 @@ def build_frequency_table(values: List[float],quantizer : Quantizer) -> Dict[int
 
 def build_cdf(freq_table: Dict[int, int]):
     """
-    Build CDF table 
-    """
-    cdf ={}
-    cum = 0
-    for symbol, frequency in sorted(freq_table.items()):
-        cdf[symbol]=cum
-        cum += frequency
+    Build CDF table.
 
-    return cum , cdf
+    Args:
+        freq_table (Dict[int, int]): A mapping from symbol to its frequency.
+
+    Returns:
+        Tuple[int, Dict[int, int]]: (total_count, cdf_start_by_symbol)
+            total_count (int): The total number of symbols (sum of all frequencies).
+            cdf_start_by_symbol (Dict[int, int]): The CDF start value for each symbol.
+    """
+    cdf = {}
+    total = 0
+    for symbol, frequency in sorted(freq_table.items()):
+        cdf[symbol] = total
+        total += frequency
+
+    return total, cdf
