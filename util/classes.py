@@ -251,13 +251,8 @@ class StaticANSEncoder(Encoder):
 class StaticANSDecoder(Decoder):
     def __init__(self, freq_table: Dict[int,int]):
         self.freq_table = freq_table
-        self.total = sum(freq_table.values())
-        self.cdf_ranges = {}
-        self.n, self.cdf = build_cdf(freq_table)
-        cum = 0
-        for symbol, frequency in sorted(freq_table.items()):
-            self.cdf_ranges[symbol] = (cum, cum + frequency)
-            cum += frequency
+        self.total, cdf = build_cdf(freq_table)
+        self.cdf_ranges = {s: (cdf[s], cdf[s] + f) for s, f in freq_table.items()}
 
     def decode(self, bitstream: bytes, n_symbol: int) -> List[int]:
         """
