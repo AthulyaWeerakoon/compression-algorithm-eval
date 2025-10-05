@@ -289,5 +289,7 @@ class StaticANSDecoder(Decoder):
             lo = self.bounds[idx]
             state = f * (state // self.total) + (x - lo)
 
+        # The ANS decoding process reconstructs symbols in reverse order,
+        # so we reverse the result to restore the original symbol order.
         return result[::-1]
         
