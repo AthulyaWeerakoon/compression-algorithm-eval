@@ -2,6 +2,7 @@ from util.types import Predictor, Coder, Quantizer, Encoder, Decoder
 from typing import Sequence, List, Optional, Dict
 import numpy as np
 from util.methods import build_cdf
+import bisect
 
 
 class UniformQuantizer(Quantizer):
@@ -249,34 +250,44 @@ class StaticANSEncoder(Encoder):
 
 
 class StaticANSDecoder(Decoder):
-    def __init__(self, freq_table: Dict[int,int]):
+    """Static ANS decoder using a fixed frequency table with O(log K) decoding."""
+
+    def __init__(self, freq_table: Dict[int, int]):
         self.freq_table = freq_table
         self.total, cdf = build_cdf(freq_table)
-        self.cdf_ranges = {s: (cdf[s], cdf[s] + f) for s, f in freq_table.items()}
 
-    def decode(self, bitstream: bytes, n_symbol: int) -> List[int]:
+        # Precompute two parallel arrays for fast lookup
+        self.bounds = []
+        self.symbols = []
+        for sym, f in sorted(freq_table.items()):
+            lo = cdf[sym]
+            hi = cdf[sym] + f
+            self.bounds.append(lo)   # lower bound
+            self.symbols.append(sym) # corresponding symbol
+
+    def decode(self, bitstream: bytes, n_symbols: int) -> List[int]:
         """
-        Decodes an ANS bitstream (as bytes) into the original list of symbols.
+        Decode an ANS byte stream into the original list of symbols using binary search.
 
         Parameters:
-            bitstream (bytes): The ANS bitstream to decode, as produced by StaticANSEncoder.encode.
+            bitstream (bytes): ANS-encoded byte stream
+            n_symbols (int): number of symbols to decode
 
         Returns:
-            List[int]: The decoded list of integer symbols, in original order.
-
-        Decoding algorithm:
-            Iteratively extracts symbols from the ANS bitstream using the frequency table and CDF ranges,
-            reconstructing the original sequence in reverse, then returns it in correct order.
+            List[int]: decoded symbols in original order
         """
-        state = int.from_bytes(bitstream, byteorder="big")  
+        state = int.from_bytes(bitstream, byteorder="big")
         result = []
-        for _ in range(n_symbol):
+
+        for _ in range(n_symbols):
             x = state % self.total
-            for sym, (lo, hi) in self.cdf_ranges.items():
-                if lo <= x < hi:
-                    result.append(sym)
-                    f = self.freq_table[sym]
-                    state = f * (state // self.total) + (x - lo)
-                    break
+            idx = bisect.bisect_right(self.bounds, x) - 1
+            sym = self.symbols[idx]
+
+            result.append(sym)
+            f = self.freq_table[sym]
+            lo = self.bounds[idx]
+            state = f * (state // self.total) + (x - lo)
+
         return result[::-1]
         
