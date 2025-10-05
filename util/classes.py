@@ -1,4 +1,4 @@
-from util.types_protocol import Predictor, Coder, Quantizer, Encoder, Decoder
+from util.types import Predictor, Coder, Quantizer, Encoder, Decoder
 from typing import Sequence, List, Optional, Dict
 import numpy as np
 from util.methods import build_cdf
@@ -224,7 +224,7 @@ class StaticANSEncoder(Encoder):
         self.freq_table = freq_table
         self.total ,self.cdf = build_cdf(freq_table)
 
-    def encode(self, data_list: List[int]) -> int:
+    def encode(self, data_list: List[int]) -> bytes:
         """
         Encodes a list of integer symbols into a single ANS state integer using a static frequency table.
 
@@ -243,7 +243,8 @@ class StaticANSEncoder(Encoder):
             c = self.cdf[symbol]
             state = (state // f) * self.total + c + (state % f)
 
-        return state        
+        n_bytes = (state.bit_length() + 7) // 8   
+        return state.to_bytes(n_bytes, byteorder="big")    
 
 
 
@@ -258,22 +259,23 @@ class StaticANSDecoder(Decoder):
             self.cdf_ranges[symbol] = (cum, cum + frequency)
             cum += frequency
 
-    def decode(self, state: int) -> List[int]:
+    def decode(self, bitstream: int, n_symbol: int) -> List[int]:
         """
-        Decodes an integer ANS state into the original list of symbols.
+        Decodes an integer ANS bitstream into the original list of symbols.
 
         Parameters:
-            state (int): The ANS state integer to decode, as produced by StaticANSEncoder.encode.
+            bitstream (int): The ANS bitstream integer to decode, as produced by StaticANSEncoder.encode.
 
         Returns:
             List[int]: The decoded list of integer symbols, in original order.
 
         Decoding algorithm:
-            Iteratively extracts symbols from the ANS state using the frequency table and CDF ranges,
+            Iteratively extracts symbols from the ANS bitstream using the frequency table and CDF ranges,
             reconstructing the original sequence in reverse, then returns it in correct order.
         """
+        state = int.from_bytes(bitstream, byteorder="big")  
         result = []
-        for _ in range(self.n):
+        for _ in range(n_symbol):
             x = state % self.total
             for sym, (lo, hi) in self.cdf_ranges.items():
                 if lo <= x < hi:
@@ -281,4 +283,5 @@ class StaticANSDecoder(Decoder):
                     f = self.freq_table[sym]
                     state = f * (state // self.total) + (x - lo)
                     break
-        return list(reversed(result))
+        return result[::-1]
+        

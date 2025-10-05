@@ -2,7 +2,7 @@ from memory_profiler import memory_usage
 import numpy as np
 import time
 from typing import List,Dict 
-from util.types_protocol import Quantizer
+from util.types import Quantizer
 from collections import Counter
 
 def profile_memory(func, *args, **kwargs):
@@ -15,7 +15,7 @@ def profile_memory(func, *args, **kwargs):
 
     def wrapper():
         nonlocal result
-        result = func(*args, **kwargs)
+        result = func(*args, **kwargs,)
         return result
 
     peak_mem = memory_usage((wrapper,), max_usage=True, retval=False, max_iterations=1)
@@ -77,4 +77,5 @@ def build_cdf(freq_table: Dict[int, int]):
     for symbol, frequency in sorted(freq_table.items()):
         cdf[symbol]=cum
         cum += frequency
+
     return cum , cdf

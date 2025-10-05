@@ -36,7 +36,7 @@ class Decoder(Protocol):
     Evaluator to compute reconstruction metrics such as MSE and SNR.
     """
 
-    def decode(self, bitstream: Any) -> Any:
+    def decode(self, bitstream: Any, n_symbol: int) -> Any:
         """
         Decodes a bitstream into a data array.
 
