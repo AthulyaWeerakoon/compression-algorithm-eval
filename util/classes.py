@@ -259,12 +259,12 @@ class StaticANSDecoder(Decoder):
             self.cdf_ranges[symbol] = (cum, cum + frequency)
             cum += frequency
 
-    def decode(self, bitstream: int, n_symbol: int) -> List[int]:
+    def decode(self, bitstream: bytes, n_symbol: int) -> List[int]:
         """
-        Decodes an integer ANS bitstream into the original list of symbols.
+        Decodes an ANS bitstream (as bytes) into the original list of symbols.
 
         Parameters:
-            bitstream (int): The ANS bitstream integer to decode, as produced by StaticANSEncoder.encode.
+            bitstream (bytes): The ANS bitstream to decode, as produced by StaticANSEncoder.encode.
 
         Returns:
             List[int]: The decoded list of integer symbols, in original order.
