@@ -232,7 +232,7 @@ class StaticANSEncoder(Encoder):
             data_list (List[int]): List of integer symbols to encode.
 
         Returns:
-            int: The final ANS state after encoding all symbols.
+            bytes: The final ANS bitstream.
 
         Encoding algorithm:
             Processes symbols in reverse order, updating the ANS state using the frequency table and cumulative distribution function (CDF).
