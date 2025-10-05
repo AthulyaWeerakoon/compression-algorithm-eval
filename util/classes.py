@@ -244,8 +244,8 @@ class StaticANSEncoder(Encoder):
             c = self.cdf[symbol]
             state = (state // f) * self.total + c + (state % f)
 
-        n_bytes = (state.bit_length() + 7) // 8   
-        return state.to_bytes(n_bytes, byteorder="big")    
+        n_bytes = max(1, (state.bit_length() + 7) // 8)
+        return state.to_bytes(n_bytes, byteorder="big")
 
 
 
