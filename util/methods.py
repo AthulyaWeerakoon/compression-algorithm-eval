@@ -15,7 +15,7 @@ def profile_memory(func, *args, **kwargs):
 
     def wrapper():
         nonlocal result
-        result = func(*args, **kwargs,)
+        result = func(*args, **kwargs)
         return result
 
     peak_mem = memory_usage((wrapper,), max_usage=True, retval=False, max_iterations=1)
