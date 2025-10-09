@@ -280,7 +280,7 @@ class ANSEncoder(Encoder):
 
 
 class ANSDecoder(Decoder):
-    """Simple rANS encoder"""
+    """Simple rANS decoder"""
 
     def __init__(self, freq_table: FrequencyTable):
         self.ft = freq_table
