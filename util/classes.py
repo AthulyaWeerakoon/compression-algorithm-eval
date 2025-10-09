@@ -285,18 +285,32 @@ class ANSDecoder(Decoder):
     def __init__(self, freq_table: FrequencyTable):
         self.ft = freq_table
 
-    def decode(self, bitstream: bytes) -> List[int]:
+    def decode(self, bitstream: bytes, num_symbols: Optional[int] = None) -> List[int]:
+        """
+        Decodes the given bitstream into a list of symbols.
+        If num_symbols is provided, decodes exactly that many symbols.
+        Otherwise, decodes until state returns to initial region.
+        """
         ft = self.ft
         # Convert bytes back to integer state
         state = int.from_bytes(bitstream, 'big')
 
         decoded = []
-        while state > 1:  # until state returns to initial region
-            x = state % ft.total
-            s = ft.symbol_from_cum(x)
-            freq = ft.freq(s)
-            cum = ft.cum_freq(s)
-            state = freq * (state // ft.total) + (x - cum)
-            decoded.append(s)
+        if num_symbols is not None:
+            for _ in range(num_symbols):
+                x = state % ft.total
+                s = ft.symbol_from_cum(x)
+                freq = ft.freq(s)
+                cum = ft.cum_freq(s)
+                state = freq * (state // ft.total) + (x - cum)
+                decoded.append(s)
+        else:
+            while state > 1:  # until state returns to initial region
+                x = state % ft.total
+                s = ft.symbol_from_cum(x)
+                freq = ft.freq(s)
+                cum = ft.cum_freq(s)
+                state = freq * (state // ft.total) + (x - cum)
+                decoded.append(s)
 
         return decoded
