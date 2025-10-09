@@ -218,7 +218,7 @@ class SimpleFrequencyTable(FrequencyTable):
     to indices of each frequency in the initialization frequency list.
     """
 
-    def __init__(self, freqs: list[int]):
+    def __init__(self, freqs: List[int]):
         if any(f < 0 for f in freqs):
             raise ValueError("Frequencies must be non-negative")
         self._freqs = freqs
