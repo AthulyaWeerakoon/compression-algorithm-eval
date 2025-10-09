@@ -1,4 +1,5 @@
 from typing import Protocol, runtime_checkable, Any, Sequence, List
+import numpy as np
 
 
 @runtime_checkable
@@ -59,9 +60,13 @@ class Predictor(Protocol):
         the quantized residuals that were actually used (ints).
     """
 
-    def predict(self, n: int = 1) -> Sequence[float]: ...
+    def predict(self, n: int = 1) -> Sequence[float]:
+        """Return n number of predictions."""
+        ...
 
-    def update(self, quantized_residuals: Sequence[int]) -> None: ...
+    def update(self, quantized_residuals: Sequence[float]) -> None:
+        """Update predictor memory with the residuals."""
+        ...
 
 
 @runtime_checkable
@@ -77,7 +82,7 @@ class Coder(Protocol):
 
     def encode_symbols(self, symbols: Sequence[int]) -> bytes: ...
 
-    def decode_symbols(self, bitstream: bytes, n: int) -> List[int]: ...
+    def decode_symbols(self, bitstream: bytes) -> List[int]: ...
 
 
 @runtime_checkable
@@ -87,9 +92,56 @@ class Quantizer(Protocol):
         ...
 
     def symbol_to_residual(self, symbol: int) -> float:
-        """Dequantize symbol -> reconstructed residual (float)."""
+        """integer symbol -> reconstructed residual (float)."""
         ...
 
     def symbol_range(self) -> int:
         """Return number of available discrete symbols (levels)."""
         ...
+
+
+@runtime_checkable
+class FrequencyTable(Protocol):
+    """Protocol defining frequency interface for ANS."""
+
+    def freq(self, symbol: int) -> int:
+        """Return the frequency of the given symbol."""
+        ...
+
+    def cum_freq(self, symbol: int) -> int:
+        """Return cumulative frequency up to (but not including) this symbol."""
+        ...
+
+    def symbol_from_cum(self, cum_value: int) -> int:
+        """Return the symbol corresponding to the given cumulative frequency."""
+        ...
+
+    @property
+    def total(self) -> int:
+        """Total frequency count of all symbols."""
+        ...
+
+
+@runtime_checkable
+class RegressorEnvelop(Protocol):
+    """
+    Protocol defining a minimal interface for wrapped regressors.
+
+    Any regressor implementing this protocol must provide a `predict` method that:
+    - takes the number of predictions `n` and a numpy input window (1D array)
+    - returns a numpy array of `n` predicted values
+    """
+
+    def predict(self, n: int, input_window: np.ndarray) -> np.ndarray:
+        """
+        Predict the next `n` values based on the given input window.
+
+        Args:
+            n (int): Number of predictions to make.
+            input_window (np.ndarray): 1D array of previous samples.
+
+        Returns:
+            np.ndarray: Array of `n` predicted values.
+        """
+        ...
+

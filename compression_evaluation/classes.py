@@ -1,5 +1,5 @@
-from types import Predictor, Coder, Quantizer, Encoder, Decoder
-from typing import Sequence, List, Optional
+from .types import Predictor, Coder, Quantizer, Encoder, Decoder, FrequencyTable, RegressorEnvelop
+from typing import Sequence, List
 import numpy as np
 
 
@@ -7,37 +7,45 @@ class UniformQuantizer(Quantizer):
     """
     Uniform scalar quantizer for residuals.
 
-    Maps residual -> integer symbol via rounding: q = round(residual / step).
-    Symbol mapping has an offset so output is non-negative (0..levels-1).
-    Reconstruction: residual_hat = (q - offset) * step.
+    Maps residual -> integer symbol via rounding: q = round((residual - min_residual) / step).
+    Symbol mapping is from 0 to levels - 1.
+    Reconstruction: residual_hat = symbol * step + min_residual
     """
 
-    def __init__(self, step: float, levels: int = 65536, clip: bool = True):
-        assert step > 0, "step must be positive"
-        assert levels >= 2, "levels must be >= 2"
+    def __init__(self, step: float, levels: int = 65536, min_residual: float = None, clip: bool = True):
+        assert step > 0
+        assert levels >= 2
         self.step = float(step)
         self.levels = int(levels)
-        self.offset = levels // 2  # map signed ints to non-negative symbols
-        self.min_sym = 0
-        self.max_sym = levels - 1
         self.clip = bool(clip)
 
-    def residual_to_symbol(self, residual: float) -> int:
-        q = int(np.round(residual / self.step))
-        sym = q + self.offset
-        if self.clip:
-            sym = max(self.min_sym, min(sym, self.max_sym))
+        # If min_residual is not provided, default to symmetric around zero
+        if min_residual is None:
+            self.min_residual = - (levels // 2) * step
         else:
-            if not (self.min_sym <= sym <= self.max_sym):
+            self.min_residual = float(min_residual)
+
+        self.max_residual = self.min_residual + (levels - 1) * step
+        self.min_sym = 0
+        self.max_sym = levels - 1
+
+    def residual_to_symbol(self, residual: float) -> int:
+        q = int(np.round((residual - self.min_residual) / self.step))
+        if self.clip:
+            q = max(self.min_sym, min(q, self.max_sym))
+        else:
+            if not (self.min_sym <= q <= self.max_sym):
                 raise ValueError("Quantized symbol out of range.")
-        return int(sym)
+        return q
 
     def symbol_to_residual(self, symbol: int) -> float:
-        q = int(symbol) - self.offset
-        return q * self.step
+        return symbol * self.step + self.min_residual
 
     def symbol_range(self) -> int:
         return self.levels
+
+    def get_step_size(self) -> float:
+        return self.step
 
 
 class UniformQuantizerByRange(Quantizer):
@@ -80,133 +88,227 @@ class UniformQuantizerByRange(Quantizer):
     def symbol_range(self) -> int:
         return self.levels
 
+    def get_step_size(self) -> float:
+        return self.step
+
 
 class LPCEncoder(Encoder):
     """
-    LPC-style encoder that uses a pluggable Predictor and a pluggable Coder.
+    LPC-style encoder with fixed predictor length and pluggable Coder and Quantizer.
 
-    Workflow (per sample or per-batch):
-      1. pred = predictor.predict(n=1 or batch_size)
+    Workflow:
+      1. predictor.predict(n_predictions)
       2. residual = actual - pred
-      3. q_sym = quantizer.residual_to_symbol(residual)  # quantize BEFORE updating predictor
-      4. predictor.update([q_sym ...])                     # predictor receives quantized residuals
-      5. collect q_sym into list to pass to coder.encode_symbols
-
-    Important: predictor.update is called *before* coder.encode_symbols so the predictor at the encoder
-    has the same state as after encoding; decoder will update *after* decoding the symbol, restoring sync.
+      3. q_sym = quantizer.residual_to_symbol(residual)
+      4. predictor.update(reconstructed_residuals)
+      5. coder.encode_symbols(q_syms)
     """
 
     def __init__(
-            self,
-            predictor: Predictor,
-            coder: Coder,
-            quantizer: Quantizer = None,
-            batch_size: int = 1,
+        self,
+        predictor: Predictor,
+        coder: Coder,
+        quantizer: Quantizer = None,
+        n_predictions: int = 1,
     ):
-        assert isinstance(predictor, Predictor) or (hasattr(predictor, "predict") and hasattr(predictor, "update")), \
-            "predictor must implement predict(n:int) and update(seq[int])"
-        assert isinstance(coder, Coder) or (hasattr(coder, "encode_symbols") and hasattr(coder, "decode_symbols")), \
+        assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
+            "predictor must implement predict(n:int) and update(seq[float])"
+        assert hasattr(coder, "encode_symbols") and hasattr(coder, "decode_symbols"), \
             "coder must implement encode_symbols and decode_symbols"
         self.predictor = predictor
         self.coder = coder
         self.quantizer = quantizer if quantizer is not None else UniformQuantizer(step=1.0)
-        self.batch_size = int(batch_size)
+        self.n_predictions = int(n_predictions)
 
     def encode(self, data: Sequence[float]) -> bytes:
-        """
-        Encode a 1D sequence of numeric data into bytes.
-        Returns: bytes (the output bitstream from coder)
-        """
         xs = np.asarray(data, dtype=float).ravel()
-        n = xs.shape[0]
-        symbols = []
-        i = 0
-        while i < n:
-            b = min(self.batch_size, n - i)
-            preds = np.asarray(self.predictor.predict(b), dtype=float)
-            assert preds.shape[0] == b, "predictor.predict(b) must return b predictions"
+        n = len(xs)
+        all_syms = []
 
-            actuals = xs[i:i + b]
-            residuals = actuals - preds  # float residuals
+        for i in range(0, n, self.n_predictions):
+            # Handle the last incomplete block properly
+            pred_count = min(self.n_predictions, n - i)
+            preds = np.asarray(self.predictor.predict(pred_count), dtype=float)
+            assert preds.shape[0] == pred_count, \
+                f"predictor.predict({pred_count}) must return {pred_count} predictions, got {preds.shape[0]}"
 
-            # Quantize residuals to symbols
+            actual = xs[i:i + pred_count]
+            residuals = actual - preds
             syms = [self.quantizer.residual_to_symbol(float(r)) for r in residuals]
 
-            # Update predictor with quantized residuals BEFORE encoding (encoder-side update)
-            self.predictor.update(syms)
+            # Reconstructed residuals for feedback update
+            recon_residuals = [self.quantizer.symbol_to_residual(sym) for sym in syms]
+            self.predictor.update(recon_residuals)
 
-            symbols.extend(syms)
-            i += b
+            all_syms.extend(syms)
 
-        # encode all symbols using coder
-        bitstream = self.coder.encode_symbols(symbols)
-        return bitstream
+        return self.coder.encode_symbols(all_syms)
 
 
 class LPCDecoder(Decoder):
     """
-    LPC-style decoder that uses the same Predictor and Coder types as encoder.
+    LPC-style decoder with fixed prediction length and pluggable Coder and Quantizer.
 
-    Workflow (per sample or per-batch):
-      1. preds = predictor.predict(n=batch_size)   # prediction BEFORE seeing quantized residual
-      2. q_syms = coder.decode_symbols(bitstream, n=batch_size)
-      3. reconstruct = preds + quantizer.symbol_to_residual(q_sym)
-      4. predictor.update(q_syms)                   # update AFTER decoding so next predictions match encoder
+    Workflow:
+      1. preds = predictor.predict(n_predictions)
+      2. q_syms = coder.decode_symbols(bitstream)
+      3. reconstructed = preds + quantizer.symbol_to_residual(sym)
+      4. predictor.update(reconstructed_residuals)
     """
 
     def __init__(
-            self,
-            predictor: Predictor,
-            coder: Coder,
-            quantizer: Quantizer = None,
-            batch_size: int = 1,
+        self,
+        predictor: Predictor,
+        coder: Coder,
+        quantizer: Quantizer = None,
+        n_predictions: int = 1,
     ):
-        assert isinstance(predictor, Predictor) or (hasattr(predictor, "predict") and hasattr(predictor, "update")), \
-            "predictor must implement predict(n:int) and update(seq[int])"
-        assert isinstance(coder, Coder) or (hasattr(coder, "encode_symbols") and hasattr(coder, "decode_symbols")), \
+        assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
+            "predictor must implement predict(n:int) and update(seq[float])"
+        assert hasattr(coder, "encode_symbols") and hasattr(coder, "decode_symbols"), \
             "coder must implement encode_symbols and decode_symbols"
         self.predictor = predictor
         self.coder = coder
         self.quantizer = quantizer if quantizer is not None else UniformQuantizer(step=1.0)
-        self.batch_size = int(batch_size)
+        self.n_predictions = int(n_predictions)
 
-    def decode(self, bitstream: bytes, n_values: Optional[int] = None) -> List[float]:
-        """
-        Decode bitstream into a list of reconstructed values.
-        - bitstream: bytes as produced by coder.encode_symbols
-        - n_values: number of values to decode (required for many coders). If None and coder supports
-          implicit length, decoder may attempt to derive it (but best to pass it).
-        """
-        if n_values is None:
-            raise ValueError("n_values must be provided for decoding (number of symbols/values encoded).")
-
-        total = int(n_values)
+    def decode(self, bitstream: bytes) -> List[float]:
+        syms = self.coder.decode_symbols(bitstream)
         recon = []
-        i = 0
-        # To keep API simple, ask coder to decode in chunks of batch_size
-        while i < total:
-            b = min(self.batch_size, total - i)
-            # pred BEFORE decoding these symbols:
-            preds = np.asarray(self.predictor.predict(b), dtype=float)
-            assert preds.shape[0] == b, "predictor.predict(b) must return b predictions"
+        idx = 0
+        total_syms = len(syms)
 
-            syms = self.coder.decode_symbols(bitstream, b)  # NOTE: coder must consume next b symbols from stream
-            # If coder decodes entire stream at once, adapt accordingly (this protocol assumes ordered decode).
-            if len(syms) != b:
-                # Some coders return entire decoded list at once; handle that:
-                # If coder returned more, take first b and keep rest as "remaining"
-                # (left as user implementation detail).
-                raise RuntimeError(f"Coder.decode_symbols returned {len(syms)} symbols, expected {b}")
+        while idx < total_syms:
+            pred_count = min(self.n_predictions, total_syms - idx)
+            preds = np.asarray(self.predictor.predict(pred_count), dtype=float)
 
-            # reconstruct and update predictor AFTER decoding
-            for idx, sym in enumerate(syms):
-                residual_hat = self.quantizer.symbol_to_residual(sym)
-                value_hat = float(preds[idx]) + float(residual_hat)
-                recon.append(value_hat)
+            block_syms = syms[idx:idx + pred_count]
+            residuals = [self.quantizer.symbol_to_residual(sym) for sym in block_syms]
+            block_recon = [float(p) + float(r) for p, r in zip(preds, residuals)]
 
-            # Now update predictor with quantized residuals (as ints)
-            self.predictor.update(syms)
-
-            i += b
+            recon.extend(block_recon)
+            self.predictor.update(residuals)
+            idx += pred_count
 
         return recon
+
+
+class SimpleFrequencyTable(FrequencyTable):
+    """
+    Simple frequency table implementing the ANS FrequencyTable protocol.
+    Assumes that symbols are integers which start from 0, and corresponds to the index of each frequency in the
+    initialization frequency list
+    """
+
+    def __init__(self, freqs: list[int]):
+        if any(f < 0 for f in freqs):
+            raise ValueError("Frequencies must be non-negative")
+        self._freqs = freqs
+        self._cumulative = [0]
+        for f in freqs:
+            self._cumulative.append(self._cumulative[-1] + f)
+        self._total = self._cumulative[-1]
+
+    def freq(self, symbol: int) -> int:
+        return self._freqs[symbol]
+
+    def cum_freq(self, symbol: int) -> int:
+        return self._cumulative[symbol]
+
+    def symbol_from_cum(self, cum_value: int) -> int:
+        """Binary search for symbol corresponding to cumulative frequency."""
+        if not (0 <= cum_value < self._total):
+            raise ValueError("cum_value out of range")
+        low, high = 0, len(self._freqs) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if self._cumulative[mid + 1] <= cum_value:
+                low = mid + 1
+            elif self._cumulative[mid] > cum_value:
+                high = mid - 1
+            else:
+                return mid
+        raise RuntimeError("Failed to find symbol for cumulative frequency")
+
+    @property
+    def total(self) -> int:
+        return self._total
+
+
+class ANSCoder(Coder):
+    """Simple rANS encoder"""
+
+    def __init__(self, freq_table: FrequencyTable):
+        self.ft = freq_table
+
+    def encode_symbols(self, data: Sequence[int]) -> bytes:
+        state = 1
+        ft = self.ft
+
+        # Encode in reverse
+        for symbol in reversed(data):
+            freq = ft.freq(symbol)
+            cum = ft.cum_freq(symbol)
+            state = (state // freq) * ft.total + cum + (state % freq)
+
+        # Just turn final state into bytes (big endian)
+        return state.to_bytes((state.bit_length() + 7) // 8, 'big')
+
+    def decode_symbols(self, bitstream: bytes) -> List[int]:
+        ft = self.ft
+        # Convert bytes back to integer state
+        state = int.from_bytes(bitstream, 'big')
+
+        decoded = []
+        while state > 1:  # until state returns to initial region
+            x = state % ft.total
+            s = ft.symbol_from_cum(x)
+            freq = ft.freq(s)
+            cum = ft.cum_freq(s)
+            state = freq * (state // ft.total) + (x - cum)
+            decoded.append(s)
+
+        return decoded
+
+
+class StaticResidualRegressor(Predictor):
+    """
+    A residual-based predictive model that maintains a fixed-size input window.
+
+    It uses a wrapped regressor (e.g., linear, AR, neural net) to predict the next
+    value(s) from the current window, then updates the window using quantized residuals.
+    """
+
+    def __init__(self, regressor: RegressorEnvelop, input_size: int):
+        self._regressor = regressor
+        self._window_size = input_size
+        self._window = np.zeros(input_size, dtype=float)
+        self._predictions = np.zeros(0, dtype=float)
+
+    def predict(self, n: int = 1) -> np.ndarray:
+        """
+        Make `n` predictions from the current window using the wrapped regressor.
+        """
+        preds = self._regressor.predict(n, self._window)
+        self._predictions = preds
+        return preds
+
+    def update(self, quantized_residuals):
+        """
+        Update the input window by adding residuals to the previous predictions.
+        The window rolls forward with the most recent reconstructed values.
+        """
+        quantized_residuals = np.asarray(quantized_residuals, dtype=float)
+
+        # reconstruct predicted + residual values
+        assert len(self._predictions) == len(quantized_residuals), "Residual count must match the prediction length"
+        reconstructed = self._predictions + quantized_residuals
+
+        # roll window and insert new reconstructed values
+        total_new = len(reconstructed)
+        if total_new >= self._window_size:
+            # if residuals exceed window size, keep only last window_size values
+            self._window = reconstructed[-self._window_size:]
+        else:
+            self._window = np.roll(self._window, -total_new)
+            self._window[-total_new:] = reconstructed

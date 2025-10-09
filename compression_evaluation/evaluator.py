@@ -1,7 +1,7 @@
 from typing import Any
 import numpy as np
-from compression_evaluation.types import Encoder, Decoder
-from compression_evaluation.methods import profile_memory
+from .types import Encoder, Decoder
+from .methods import profile_memory
 
 
 class Evaluator:
