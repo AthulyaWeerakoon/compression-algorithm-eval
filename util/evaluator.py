@@ -1,7 +1,7 @@
 from typing import Any
 import numpy as np
-from util.types import Encoder, Decoder
-from util.methods import profile_memory
+from .types import Encoder, Decoder
+from .methods import profile_memory
 
 
 class Evaluator:
@@ -33,9 +33,7 @@ class Evaluator:
             "Encoder must return a bitstream (bytes, bytearray, list, or ndarray)"
 
         # --- Decode ---
-        reconstructed, peak_decode_mem, t_decode = profile_memory(
-            self.decoder.decode, bitstream, len(data_series)
-        )
+        reconstructed, peak_decode_mem, t_decode = profile_memory(self.decoder.decode, bitstream)
         results["decode_time_sec"] = t_decode
         results["decode_mem_mb"] = peak_decode_mem
 

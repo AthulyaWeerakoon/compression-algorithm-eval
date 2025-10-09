@@ -3,7 +3,6 @@ import numpy as np
 import time
 from typing import List, Dict 
 from util.types import Quantizer
-from collections import Counter
 
 def profile_memory(func, *args, **kwargs):
     """
@@ -21,6 +20,7 @@ def profile_memory(func, *args, **kwargs):
     peak_mem = memory_usage((wrapper,), max_usage=True, retval=False, max_iterations=1)
     elapsed = time.perf_counter() - t_start
     return result, peak_mem, elapsed
+
 
 
 def build_time_series_dataset(series, input_size, output_size, shuffle=True):
@@ -57,33 +57,3 @@ def build_time_series_dataset(series, input_size, output_size, shuffle=True):
 
     return X, Y
 
-
-def build_frequency_table(values: List[float], quantizer : Quantizer) -> Dict[int, int]:
-    """
-    Convert the data into a frequency table
-    """
-    
-    symbols = [quantizer.value_to_symbol(i) for i in values]
-    freq_table = Counter(symbols)
-    return freq_table   
-
-
-def build_cdf(freq_table: Dict[int, int]):
-    """
-    Build CDF table.
-
-    Args:
-        freq_table (Dict[int, int]): A mapping from symbol to its frequency.
-
-    Returns:
-        Tuple[int, Dict[int, int]]: (total_count, cdf_start_by_symbol)
-            total_count (int): The total number of symbols (sum of all frequencies).
-            cdf_start_by_symbol (Dict[int, int]): The CDF start value for each symbol.
-    """
-    cdf = {}
-    total = 0
-    for symbol, frequency in sorted(freq_table.items()):
-        cdf[symbol] = total
-        total += frequency
-
-    return total, cdf

@@ -36,7 +36,7 @@ class Decoder(Protocol):
     Evaluator to compute reconstruction metrics such as MSE and SNR.
     """
 
-    def decode(self, bitstream: Any, n_symbol: Optional[int] = None) -> Any:
+    def decode(self, bitstream: Any) -> Any:
         """
         Decodes a bitstream into a data array.
 
@@ -94,3 +94,26 @@ class Quantizer(Protocol):
     def symbol_range(self) -> int:
         """Return number of available discrete symbols (levels)."""
         ...
+
+
+@runtime_checkable
+class FrequencyTable(Protocol):
+    """Protocol defining frequency interface for ANS."""
+
+    def freq(self, symbol: int) -> int:
+        """Return the frequency of the given symbol."""
+        ...
+
+    def cum_freq(self, symbol: int) -> int:
+        """Return cumulative frequency up to (but not including) this symbol."""
+        ...
+
+    def symbol_from_cum(self, cum_value: int) -> int:
+        """Return the symbol corresponding to the given cumulative frequency."""
+        ...
+
+    @property
+    def total(self) -> int:
+        """Total frequency count of all symbols."""
+        ...
+
