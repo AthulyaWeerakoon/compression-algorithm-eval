@@ -1,4 +1,4 @@
-# Spline-Based Bayesian Predictive Coding with ANS for Lossy Sensor Data Compression
+# Real-Time Predictive Coding Compression Evaluation
 
 **Authors:** Athulya Weerakoon, Arosh Upathilak ([GitHub](https://github.com/Arosh-Upathilak))  
 **Affiliation:** University of Jaffna, Sri Lanka  
@@ -8,27 +8,24 @@
 
 ## Overview
 
-This repository contains utility methods and Jupyter notebooks used in our undergraduate research project:
+This repository provides **tools and Jupyter notebooks** for evaluating various **real-time predictive coding compression algorithms**, including **regressive, probabilistic, and hybrid approaches**.
 
-**"Spline-Based Bayesian Predictive Coding with Asymmetric Numeral Systems (ANS) for Lossy Sensor Data Compression"**
+The research focuses on:
 
-The research explores:
-
-- Using **B-splines** to model probability distributions for Bayesian Predictive Coding (BPC).  
-- Applying **Asymmetric Numeral Systems (ANS)** for efficient entropy encoding.  
-- Fitting posterior distributions using **S-ADVI (Stochastic Automatic Differentiation Variational Inference)**.  
-- Evaluating compression performance on sensor data against baselines.
+- Comparing **different predictive coding algorithms** for lossy sensor data compression.  
+- Evaluating **compression performance**, reconstruction quality, and computational efficiency.  
+- Providing flexible workflows for testing and analyzing algorithms in real-time scenarios.
 
 ---
 
 ## Repository Contents
 
-- **`utils/`** – Python utility methods used across test setups.  
-- **`notebooks/`** – Jupyter notebooks with test environments, example compression workflows, and experimental setups.  
-- **`LICENSE`** – MIT License.  
-- **`pyproject.toml`** – Poetry configuration for dependencies.
+- `utils/` – Python utility methods for running experiments and data handling.  
+- `notebooks/` – Jupyter notebooks demonstrating example compression workflows and experimental setups.  
+- `LICENSE` – MIT License.  
+- `pyproject.toml` – Poetry configuration for dependencies.
 
-**Note:** Datasets used in the experiments are **not included** in this repository due to size/privacy considerations. Users must provide their own sensor datasets to run the notebooks.
+**Note:** Datasets are **not included** due to size/privacy considerations. Users must provide their own sensor datasets to run the notebooks.
 
 ---
 
@@ -37,14 +34,50 @@ The research explores:
 ### Requirements
 
 - Python 3.12+  
-- [Poetry](https://python-poetry.org/) (recommended for managing dependencies)  
+- [Poetry](https://python-poetry.org/) for dependency management  
 - Jupyter Notebook or Jupyter Lab  
 
-### Install dependencies
+### Setup Instructions
 
-```bash
-# Install dependencies via Poetry
-poetry install
+1. Clone the repository:
 
-# Activate the environment
-poetry shell
+    ```bash
+    git clone https://github.com/yourusername/your-repo.git
+    cd your-repo
+    ```
+
+2. Install dependencies and build the project with Poetry:
+
+    ```bash
+    # Install dependencies
+    poetry install
+
+    # Build the package
+    poetry build
+
+    # Activate the environment
+    poetry shell
+    ```
+
+3. Launch a notebook to start experimenting:
+
+    ```bash
+    jupyter notebook
+    # or
+    jupyter lab
+    ```
+
+---
+
+## Usage
+
+- Open a notebook from the `notebooks/` folder.  
+- Provide your own sensor dataset.  
+- Run cells to evaluate different predictive coding compression algorithms.  
+- Modify parameters to test regressive, probabilistic, or hybrid approaches.
+
+---
+
+## License
+
+This project is licensed under the MIT License – see the `LICENSE` file for details.
