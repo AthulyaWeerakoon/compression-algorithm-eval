@@ -2,6 +2,8 @@ from memory_profiler import memory_usage
 import numpy as np
 import time
 import math
+from typing import List, Dict 
+from .types import Quantizer
 
 
 def profile_memory(func, *args, **kwargs):
@@ -20,6 +22,7 @@ def profile_memory(func, *args, **kwargs):
     peak_mem = memory_usage((wrapper,), max_usage=True, retval=False, max_iterations=1)
     elapsed = time.perf_counter() - t_start
     return result, peak_mem, elapsed
+
 
 
 def build_time_series_dataset(series, input_size, output_size, shuffle=True):
