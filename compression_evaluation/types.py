@@ -1,4 +1,4 @@
-from typing import Protocol, runtime_checkable, Any, Sequence, List, Optional
+from typing import Protocol, runtime_checkable, Any, Sequence, List
 import numpy as np
 
 
@@ -60,9 +60,13 @@ class Predictor(Protocol):
         the quantized values that were actually used (ints).
     """
 
-    def predict(self, n: int = 1) -> Sequence[float]: ...
+    def predict(self, n: int = 1) -> Sequence[float]:
+        """Return n number of predictions."""
+        ...
 
-    def update(self, quantized_values: Sequence[int]) -> None: ...
+    def update(self, quantized_values: Sequence[float]) -> None:
+        """Update predictor memory with the residuals."""
+        ...
 
 
 @runtime_checkable
@@ -78,7 +82,7 @@ class Coder(Protocol):
 
     def encode_symbols(self, symbols: Sequence[int]) -> bytes: ...
 
-    def decode_symbols(self, bitstream: bytes, n: int) -> List[int]: ...
+    def decode_symbols(self, bitstream: bytes) -> List[int]: ...
 
 
 @runtime_checkable
@@ -88,7 +92,7 @@ class Quantizer(Protocol):
         ...
 
     def symbol_to_value(self, symbol: int) -> float:
-        """Dequantize symbol -> reconstructed value (float)."""
+        """Integer symbol -> reconstructed value (float)."""
         ...
 
     def symbol_range(self) -> int:
@@ -115,5 +119,29 @@ class FrequencyTable(Protocol):
     @property
     def total(self) -> int:
         """Total frequency count of all symbols."""
+        ...
+
+
+@runtime_checkable
+class RegressorEnvelop(Protocol):
+    """
+    Protocol defining a minimal interface for wrapped regressors.
+
+    Any regressor implementing this protocol must provide a `predict` method that:
+    - takes the number of predictions `n` and a numpy input window (1D array)
+    - returns a numpy array of `n` predicted values
+    """
+
+    def predict(self, n: int, input_window: np.ndarray) -> np.ndarray:
+        """
+        Predict the next `n` values based on the given input window.
+
+        Args:
+            n (int): Number of predictions to make.
+            input_window (np.ndarray): 1D array of previous samples.
+
+        Returns:
+            np.ndarray: Array of `n` predicted values.
+        """
         ...
 
