@@ -29,7 +29,7 @@ class UniformQuantizer(Quantizer):
         self.min_sym = 0
         self.max_sym = levels - 1
 
-    def residual_to_symbol(self, residual: float) -> int:
+    def value_to_symbol(self, residual: float) -> int:
         q = int(np.round((residual - self.min_residual) / self.step))
         if self.clip:
             q = max(self.min_sym, min(q, self.max_sym))
@@ -38,7 +38,7 @@ class UniformQuantizer(Quantizer):
                 raise ValueError("Quantized symbol out of range.")
         return q
 
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         return symbol * self.step + self.min_residual
 
     def symbol_range(self) -> int:
@@ -69,7 +69,7 @@ class UniformQuantizerByRange(Quantizer):
         self.step = (self.max_val - self.min_val) / (self.levels - 1)
         self.clip = bool(clip)
 
-    def residual_to_symbol(self, residual: float) -> int:
+    def value_to_symbol(self, residual: float) -> int:
         """Quantize value in [min_val, max_val] to integer symbol."""
         q = int(np.round((residual - self.min_val) / self.step))
         if self.clip:
@@ -79,7 +79,7 @@ class UniformQuantizerByRange(Quantizer):
                 raise ValueError("Value outside quantization range.")
         return q
 
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         """De-quantize integer symbol back to representative value."""
         if not (0 <= symbol < self.levels):
             raise ValueError("Symbol out of range.")
@@ -92,7 +92,7 @@ class UniformQuantizerByRange(Quantizer):
         return self.step
 
 
-class LPCEncoder(Encoder):
+class PCEncoder(Encoder):
     """
     LPC-style encoder with fixed predictor length and pluggable Coder and Quantizer.
 
@@ -134,10 +134,10 @@ class LPCEncoder(Encoder):
 
             actual = xs[i:i + pred_count]
             residuals = actual - preds
-            syms = [self.quantizer.residual_to_symbol(float(r)) for r in residuals]
+            syms = [self.quantizer.value_to_symbol(float(r)) for r in residuals]
 
             # Reconstructed residuals for feedback update
-            recon_residuals = [self.quantizer.symbol_to_residual(sym) for sym in syms]
+            recon_residuals = [self.quantizer.symbol_to_value(sym) for sym in syms]
             self.predictor.update(recon_residuals)
 
             all_syms.extend(syms)
@@ -145,7 +145,7 @@ class LPCEncoder(Encoder):
         return self.coder.encode_symbols(all_syms)
 
 
-class LPCDecoder(Decoder):
+class PCDecoder(Decoder):
     """
     LPC-style decoder with fixed prediction length and pluggable Coder and Quantizer.
 
@@ -183,7 +183,7 @@ class LPCDecoder(Decoder):
             preds = np.asarray(self.predictor.predict(pred_count), dtype=float)
 
             block_syms = syms[idx:idx + pred_count]
-            residuals = [self.quantizer.symbol_to_residual(sym) for sym in block_syms]
+            residuals = [self.quantizer.symbol_to_value(sym) for sym in block_syms]
             block_recon = [float(p) + float(r) for p, r in zip(preds, residuals)]
 
             recon.extend(block_recon)

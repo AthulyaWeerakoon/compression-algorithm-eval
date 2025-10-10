@@ -8,15 +8,15 @@ def main():
     # basic quantization
     q = UniformQuantizer(step=1.0, levels=8, min_residual=-4.0)
     residual = 0.0
-    symbol = q.residual_to_symbol(residual)
-    reconstructed = q.symbol_to_residual(symbol)
+    symbol = q.value_to_symbol(residual)
+    reconstructed = q.symbol_to_value(symbol)
     print(f"Residual {residual} -> Symbol {symbol} -> Recon {reconstructed}")
     assert np.isclose(reconstructed, residual, atol=q.step)
 
     # clip behavior enabled
     q = UniformQuantizer(step=1.0, levels=8, min_residual=-4.0, clip=True)
-    sym_low = q.residual_to_symbol(-10.0)
-    sym_high = q.residual_to_symbol(10.0)
+    sym_low = q.value_to_symbol(-10.0)
+    sym_high = q.value_to_symbol(10.0)
     print(f"Clipped low symbol: {sym_low}, high symbol: {sym_high}")
     assert sym_low == q.min_sym
     assert sym_high == q.max_sym
@@ -24,7 +24,7 @@ def main():
     # clip behavior disabled (should raise)
     q = UniformQuantizer(step=1.0, levels=8, min_residual=-4.0, clip=False)
     try:
-        q.residual_to_symbol(10.0)
+        q.value_to_symbol(10.0)
     except ValueError:
         print("Out-of-range check passed (no clipping)")
     else:
@@ -34,8 +34,8 @@ def main():
     q = UniformQuantizer(step=0.5, levels=16, min_residual=-4.0)
     residuals = np.linspace(-4.25, 3.75, 17)
     for r in residuals:
-        sym = q.residual_to_symbol(r)
-        recon = q.symbol_to_residual(sym)
+        sym = q.value_to_symbol(r)
+        recon = q.symbol_to_value(sym)
         print(f"{r:6.2f} -> {sym:4d} -> {recon:7.3f}")
         assert np.isclose(recon, r, atol=q.step)
 
