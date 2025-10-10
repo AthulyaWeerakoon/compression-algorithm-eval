@@ -1,4 +1,4 @@
-from types import Predictor, Coder, Quantizer, Encoder, Decoder
+from util.types import Predictor, Coder, Quantizer, Encoder, Decoder, FrequencyTable
 from typing import Sequence, List, Optional
 import numpy as np
 
@@ -61,7 +61,7 @@ class UniformQuantizerByRange(Quantizer):
         self.step = (self.max_val - self.min_val) / (self.levels - 1)
         self.clip = bool(clip)
 
-    def residual_to_symbol(self, residual: float) -> int:
+    def value_to_symbol(self, residual: float) -> int:
         """Quantize value in [min_val, max_val] to integer symbol."""
         q = int(np.round((residual - self.min_val) / self.step))
         if self.clip:
@@ -71,7 +71,7 @@ class UniformQuantizerByRange(Quantizer):
                 raise ValueError("Value outside quantization range.")
         return q
 
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         """De-quantize integer symbol back to representative value."""
         if not (0 <= symbol < self.levels):
             raise ValueError("Symbol out of range.")
@@ -210,3 +210,93 @@ class LPCDecoder(Decoder):
             i += b
 
         return recon
+
+class SimpleFrequencyTable(FrequencyTable):
+    """
+    Simple frequency table implementing the ANS FrequencyTable protocol.
+    Assumes that symbols are integers which start from 0, and correspond
+    to indices of each frequency in the initialization frequency list.
+    """
+
+    def __init__(self, freqs: List[int]):
+        if any(f < 0 for f in freqs):
+            raise ValueError("Frequencies must be non-negative")
+        self._freqs = freqs
+        self._cumulative = [0]
+        for f in freqs:
+            self._cumulative.append(self._cumulative[-1] + f)
+        self._total = self._cumulative[-1]
+
+    def freq(self, symbol: int) -> int:
+        symbol = int(symbol)  # ✅ ensure symbol is an integer
+        if not (0 <= symbol < len(self._freqs)):
+            raise ValueError(f"Symbol {symbol} out of range (max {len(self._freqs)-1})")
+        return self._freqs[symbol]
+
+    def cum_freq(self, symbol: int) -> int:
+        symbol = int(symbol)  # ✅ ensure symbol is an integer
+        if not (0 <= symbol < len(self._freqs)):
+            raise ValueError(f"Symbol {symbol} out of range (max {len(self._freqs)-1})")
+        return self._cumulative[symbol]
+
+    def symbol_from_cum(self, cum_value: int) -> int:
+        """Binary search for symbol corresponding to cumulative frequency."""
+        if not (0 <= cum_value < self._total):
+            raise ValueError("cum_value out of range")
+        low, high = 0, len(self._freqs) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if self._cumulative[mid + 1] <= cum_value:
+                low = mid + 1
+            elif self._cumulative[mid] > cum_value:
+                high = mid - 1
+            else:
+                return mid
+        raise RuntimeError("Failed to find symbol for cumulative frequency")
+
+    @property
+    def total(self) -> int:
+        return self._total
+
+
+class ANSEncoder(Encoder):
+    """Simple rANS encoder"""
+
+    def __init__(self, freq_table: FrequencyTable):
+        self.ft = freq_table
+
+    def encode(self, data: Sequence[int]) -> bytes:
+        state = 1
+        ft = self.ft
+
+        # Encode in reverse
+        for symbol in reversed(data):
+            freq = ft.freq(symbol)
+            cum = ft.cum_freq(symbol)
+            state = (state // freq) * ft.total + cum + (state % freq)
+
+        # Just turn final state into bytes (big endian)
+        return state.to_bytes((state.bit_length() + 7) // 8, 'big')
+
+
+class ANSDecoder(Decoder):
+    """Simple rANS decoder"""
+
+    def __init__(self, freq_table: FrequencyTable):
+        self.ft = freq_table
+
+    def decode(self, bitstream: bytes) -> List[int]:
+        ft = self.ft
+        # Convert bytes back to integer state
+        state = int.from_bytes(bitstream, 'big')
+
+        decoded = []
+        while state > 1:  # until state returns to initial region
+            x = state % ft.total
+            s = ft.symbol_from_cum(x)
+            freq = ft.freq(s)
+            cum = ft.cum_freq(s)
+            state = freq * (state // ft.total) + (x - cum)
+            decoded.append(s)
+
+        return decoded
