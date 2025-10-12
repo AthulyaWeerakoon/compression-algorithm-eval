@@ -144,4 +144,3 @@ class RegressorEnvelop(Protocol):
             np.ndarray: Array of `n` predicted values.
         """
         ...
-
