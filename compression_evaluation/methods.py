@@ -2,7 +2,7 @@ from memory_profiler import memory_usage
 import numpy as np
 import time
 import math
-
+from collections import Counter
 
 def profile_memory(func, *args, **kwargs):
     """
@@ -110,3 +110,22 @@ def largest_remainder_quantize(counts, M):
     assert sum(f) == M, "Normalization failed: total frequencies do not sum to M."
 
     return f
+
+
+from collections import Counter
+
+def build_frequency_table(data_list):
+    """
+    Build a frequency table (dictionary) from a list of symbols.
+    
+    Args:
+        data_list (list): List of symbols (integers or strings)
+    
+    Returns:
+        dict: {symbol: frequency count}
+    """
+    if not data_list:
+        return {}
+
+    freq_dict = dict(Counter(data_list))
+    return freq_dict

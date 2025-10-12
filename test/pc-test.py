@@ -1,5 +1,5 @@
 import numpy as np
-from compression_evaluation.classes import LPCEncoder, LPCDecoder, ANSCoder, SimpleFrequencyTable, \
+from compression_evaluation.classes import PCEncoder, PCDecoder, ANSCoder, SimpleFrequencyTable, \
     StaticResidualRegressor
 from compression_evaluation.types import RegressorEnvelop, Quantizer
 
@@ -32,8 +32,8 @@ if __name__ == "__main__":
     regressor = DemoRegressor()
     predictor = StaticResidualRegressor(regressor, 5)
     quantizer = DemoQuantizer()
-    lpc_encoder = LPCEncoder(predictor, ans_coder, quantizer, 1)
-    lpc_decoder = LPCDecoder(predictor, ans_coder, quantizer, 1)
+    lpc_encoder = PCEncoder(predictor, ans_coder, quantizer, 1)
+    lpc_decoder = PCDecoder(predictor, ans_coder, quantizer, 1)
 
     encoded_stream = lpc_encoder.encode(stream)
     print("Encoded stream (bytes):", encoded_stream)
