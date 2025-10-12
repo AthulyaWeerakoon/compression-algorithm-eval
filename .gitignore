@@ -1,5 +1,5 @@
 /datasets
 /.idea
+/dist
 .venv
-
-/util/__pycache__/
+__pycache__/
