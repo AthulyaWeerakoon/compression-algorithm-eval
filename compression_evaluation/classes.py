@@ -1,3 +1,4 @@
+from lib2to3.pygram import Symbols
 from .types import Predictor, Coder, Quantizer, Encoder, Decoder, FrequencyTable, RegressorEnvelop
 from typing import Sequence, List
 import numpy as np
@@ -238,8 +239,10 @@ class SimpleFrequencyTable(FrequencyTable):
 class ANSCoder(Coder):
     """Simple rANS encoder"""
 
-    def __init__(self, freq_table: FrequencyTable):
+    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer ):
         self.ft = freq_table
+        self.quantizer = quantizer
+
 
     def encode_symbols(self, data: Sequence[int]) -> bytes:
         state = 1
@@ -312,3 +315,102 @@ class StaticResidualRegressor(Predictor):
         else:
             self._window = np.roll(self._window, -total_new)
             self._window[-total_new:] = reconstructed
+
+
+class ANSEncoder(Encoder):
+    """Simple rANS encoder"""
+
+    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer):
+        self.ft = freq_table
+        self.quantizer = quantizer
+
+    def encode(self, data: Sequence[int]) -> bytes:
+        state = 1
+        ft = self.ft
+
+        symbols = [self.quantizer.value_to_symbol(val) for val in data]
+
+        # Encode in reverse
+        for symbol in reversed(symbols):
+            freq = ft.freq(symbol)
+            cum = ft.cum_freq(symbol)
+            state = (state // freq) * ft.total + cum + (state % freq)
+
+        # Just turn final state into bytes (big endian)
+        return state.to_bytes((state.bit_length() + 7) // 8, 'big')
+
+
+class ANSDecoder(Decoder):
+    """Simple rANS decoder"""
+
+    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer):
+        self.ft = freq_table
+        self.quantizer = quantizer
+
+    def decode(self, bitstream: bytes) -> List[int]:
+        ft = self.ft
+        # Convert bytes back to integer state
+        state = int.from_bytes(bitstream, 'big')
+
+        decoded = []
+        while state > 1:  # until state returns to initial region
+            x = state % ft.total
+            s = ft.symbol_from_cum(x)
+            freq = ft.freq(s)
+            cum = ft.cum_freq(s)
+            state = freq * (state // ft.total) + (x - cum)
+            decoded.append(s)
+
+        decoded_value = [self.quantizer.symbol_to_value(sym) for sym in decoded]
+        return decoded_value
+    
+class DictionaryFrequencyTable(FrequencyTable):
+    """
+    Frequency table using a dictionary {symbol: frequency} for ANS.
+    """
+
+    def __init__(self, freqs: dict[int, int]):
+        if any(f < 0 for f in freqs.values()):
+            raise ValueError("Frequencies must be non-negative")
+
+        self._freqs = freqs.copy()
+        self._symbols = sorted(freqs.keys())
+        self._cumulative = {0: 0}  
+        cum = 0
+        self._cum_list = [] 
+        for sym in self._symbols:
+            self._cumulative[sym] = cum
+            self._cum_list.append((sym, cum))
+            cum += freqs[sym]
+
+        self._total = cum
+
+    def freq(self, symbol: int) -> int:
+        return self._freqs[symbol]
+
+    def cum_freq(self, symbol: int) -> int:
+        return self._cumulative[symbol]
+
+    def symbol_from_cum(self, cum_value: int) -> int:
+        """Binary search for symbol corresponding to cumulative frequency."""
+        if not (0 <= cum_value < self._total):
+            raise ValueError("cum_value out of range")
+
+        low, high = 0, len(self._cum_list) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            sym, cum = self._cum_list[mid]
+            next_cum = self._cum_list[mid + 1][1] if mid + 1 < len(self._cum_list) else self._total
+
+            if cum_value < cum:
+                high = mid - 1
+            elif cum_value >= next_cum:
+                low = mid + 1
+            else:
+                return sym
+
+        raise RuntimeError("Failed to find symbol for cumulative frequency")
+
+    @property
+    def total(self) -> int:
+        return self._total
