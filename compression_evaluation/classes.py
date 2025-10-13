@@ -1,7 +1,7 @@
-from lib2to3.pygram import Symbols
-from .types import Predictor, Coder, Quantizer, Encoder, Decoder, FrequencyTable, RegressorEnvelop
+from .types import *
 from typing import Sequence, List
 import numpy as np
+from .methods import compute_posterior_mixture, approximate_mixture_map_pdf
 
 
 class UniformQuantizer(Quantizer):
@@ -106,11 +106,11 @@ class PCEncoder(Encoder):
     """
 
     def __init__(
-        self,
-        predictor: Predictor,
-        coder: Coder,
-        quantizer: Quantizer = None,
-        n_predictions: int = 1,
+            self,
+            predictor: Predictor,
+            coder: Coder,
+            quantizer: Quantizer = None,
+            n_predictions: int = 1,
     ):
         assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
             "predictor must implement predict(n:int) and update(seq[float])"
@@ -158,11 +158,11 @@ class PCDecoder(Decoder):
     """
 
     def __init__(
-        self,
-        predictor: Predictor,
-        coder: Coder,
-        quantizer: Quantizer = None,
-        n_predictions: int = 1,
+            self,
+            predictor: Predictor,
+            coder: Coder,
+            quantizer: Quantizer = None,
+            n_predictions: int = 1,
     ):
         assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
             "predictor must implement predict(n:int) and update(seq[float])"
@@ -239,10 +239,9 @@ class SimpleFrequencyTable(FrequencyTable):
 class ANSCoder(Coder):
     """Simple rANS encoder"""
 
-    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer ):
+    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer):
         self.ft = freq_table
         self.quantizer = quantizer
-
 
     def encode_symbols(self, data: Sequence[int]) -> bytes:
         state = 1
@@ -363,7 +362,8 @@ class ANSDecoder(Decoder):
 
         decoded_value = [self.quantizer.symbol_to_value(sym) for sym in decoded]
         return decoded_value
-    
+
+
 class DictionaryFrequencyTable(FrequencyTable):
     """
     Frequency table using a dictionary {symbol: frequency} for ANS.
@@ -375,9 +375,9 @@ class DictionaryFrequencyTable(FrequencyTable):
 
         self._freqs = freqs.copy()
         self._symbols = sorted(freqs.keys())
-        self._cumulative = {0: 0}  
+        self._cumulative = {0: 0}
         cum = 0
-        self._cum_list = [] 
+        self._cum_list = []
         for sym in self._symbols:
             self._cumulative[sym] = cum
             self._cum_list.append((sym, cum))
@@ -414,3 +414,12 @@ class DictionaryFrequencyTable(FrequencyTable):
     @property
     def total(self) -> int:
         return self._total
+
+
+class BpcMapPredictor(RegressorEnvelop):
+    def __init__(self, prior_mixture: list[ParametricDistribution]):
+        self._prior_mixture = prior_mixture
+
+    def predict(self, n: int, input_window: np.ndarray) -> np.ndarray:
+        posterior = compute_posterior_mixture(self._prior_mixture, input_window)
+        return np.full(n, approximate_mixture_map_pdf(posterior))
