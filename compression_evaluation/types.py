@@ -144,3 +144,31 @@ class RegressorEnvelop(Protocol):
             np.ndarray: Array of `n` predicted values.
         """
         ...
+
+
+@runtime_checkable
+class ParametricDistribution(Protocol):
+    """Protocol defining the structure of a probability distribution class."""
+
+    def parameters(self) -> Sequence[float]:
+        """Return model parameters."""
+        ...
+
+    def pdf(self, x) -> float:
+        """Return probability density for a value"""
+        ...
+
+    def mode(self) -> float:
+        """Return the value for which the probability density is maximum."""
+        ...
+
+    @property
+    def name(self) -> str:
+        """Return the name of the distribution."""
+        ...
+
+    @property
+    def weight(self) -> float:
+        """Return the weight of the distribution in a mixture model."""
+        ...
+
