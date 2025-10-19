@@ -1,0 +1,30 @@
+project: kan
+method: bayes  # grid, random 
+metric:
+  name: mse_valid
+  goal: minimize
+parameters:
+  learning_rate:
+    values: [0.001, 0.005, 0.01]
+  batch_size:
+    values: [16, 32, 64]
+  kan_width1:
+    values: [8, 16]
+  kan_width2:
+    values: [5, 8]
+  kan_width3:
+    values: [3]
+  grid:
+    value: 1
+  k:
+    value: 1
+  seed:
+    value: 42
+  air_bin_size:
+    values: [0.05, 0.1, 0.2]
+  input_window:
+    value: 8
+  pred_steps:
+    value: 3
+  epochs:
+    value: 50
