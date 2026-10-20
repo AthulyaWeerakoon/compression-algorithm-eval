@@ -70,6 +70,46 @@ class Predictor(Protocol):
 
 
 @runtime_checkable
+class MultivariatePredictor(Protocol):
+    """
+    Predictor protocol for pluggable batched (multi-window) prediction models.
+
+    Implementations must:
+      - predict(n: int) -> np.ndarray: return the next n predictions for each window.
+      - update(quantized_values: np.ndarray) -> None: update internal state using
+        the quantized residuals that were actually applied.
+
+    Expected array shapes:
+      - predict(n): returns np.ndarray of shape [num_windows, n]
+      - update(quantized_values): accepts np.ndarray of shape [num_windows, n]
+    """
+
+    def predict(self, n: int = 1) -> np.ndarray:
+        """
+        Predict the next `n` values for each window in the batch.
+
+        Args:
+            n (int): Number of predictions to make per window.
+
+        Returns:
+            np.ndarray: 2D array of shape [num_windows, n], containing
+                        predicted values for each window.
+        """
+        ...
+
+    def update(self, quantized_values: np.ndarray) -> None:
+        """
+        Update the internal window states using quantized residuals.
+
+        Args:
+            quantized_values (np.ndarray): 2D array of shape [num_windows, n],
+                                           representing the residuals applied
+                                           to the last predictions.
+        """
+        ...
+
+
+@runtime_checkable
 class Coder(Protocol):
     """
     Coder protocol (abstracts ANS/rANS/tANS) used to encode/decode integer symbols.
@@ -142,6 +182,34 @@ class RegressorEnvelop(Protocol):
 
         Returns:
             np.ndarray: Array of `n` predicted values.
+        """
+        ...
+
+
+@runtime_checkable
+class MultiVariateRegressorEnvelop(Protocol):
+    """
+    Protocol defining a minimal interface for wrapped multi-variate regressors.
+
+    Any regressor implementing this protocol must provide a `predict` method that:
+    - takes the number of predictions `n` and a 2D numpy array of input windows
+      (shape: [num_windows, window_length])
+    - returns a 2D numpy array of predicted values
+      (shape: [n, num_windows])
+    """
+
+    def predict(self, n: int, input_windows: np.ndarray) -> np.ndarray:
+        """
+        Predict the next `n` values for each window in the batch.
+
+        Args:
+            n (int): Number of predictions to make for each input window.
+            input_windows (np.ndarray): 2D array of shape [num_windows, window_length],
+                                        where each row is a window of previous samples.
+
+        Returns:
+            np.ndarray: 2D array of shape [num_windows, n] containing the predicted values
+                        for each window.
         """
         ...
 

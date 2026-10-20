@@ -105,16 +105,16 @@ def train_kan_model():
         kan_model = KAN(
             width=width,
             grid=config.grid,
-            k=config.k,
-            seed=config.seed,
+            k=3,
+            seed=42,
             device=device
         )
 
         kan_model.fit(
             dataset,
-            steps=config.steps,
+            steps=50,
             lamb=config.lamb,
-            lamb_entropy=config.lamb_entropy if hasattr(config, 'lamb_entropy') else 2.0
+            lamb_entropy=2.0
         )
 
         with torch.no_grad():
@@ -157,7 +157,7 @@ def train_kan_model():
 
 # WandB Hyperparameter Sweep Configuration
 sweep_config = {
-    'method': 'bayes',
+    'method': 'grid',
     'metric': {
         'name': 'final_valid_mse',
         'goal': 'minimize'
@@ -165,51 +165,37 @@ sweep_config = {
     'parameters': {
         # Variable input/output sizes
         'input_steps': {
-            'values': [4, 6, 8, 10]
+            'values': [4, 6, 8, 10, 15, 25]
         },
         'output_steps': {
-            'values': [1, 2, 3, 4]
+            'values': [1, 2, 3, 4, 5, 9]
         },
 
         # Layer configuration
         'num_hidden_layers': {
-            'values': [0, 1, 2]
+            'values': [0, 1]
         },
         'hidden_layer1': {
-            'values': [3, 5, 8, 10, 16]
+            'values': [3, 5, 7, 9]
         },
         'hidden_layer2': {
-            'values': [3, 5, 8, 10, 16]
+            'values': [3, 5, 7]
         },
 
         # KAN-specific hyperparams
         'grid': {
-            'values': [3, 5, 10, 20]
+            'values': [3, 5]
         },
         'k': {
-            'values': [2, 3, 4, 5]
-        },
-        'steps': {
-            'values': [50, 100, 200, 300]
+            'values': [3]
         },
         'lamb': {
-            'distribution': 'log_uniform_values',
-            'min': 0.0001,
-            'max': 0.1
-        },
-        'lamb_entropy': {
-            'distribution': 'log_uniform_values',
-            'min': 0.1,
-            'max': 10.0
-        },
-
-        'seed': {
-            'value': 42
+            'values': [0.001, 0.01, 0.1],
         }
     }
 }
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     sweep_id = wandb.sweep(sweep_config, project="kan-air-temperature-hyperparameter")
     wandb.agent(sweep_id, function=train_kan_model, count=30)

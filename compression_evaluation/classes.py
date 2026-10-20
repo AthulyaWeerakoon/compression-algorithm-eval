@@ -194,6 +194,155 @@ class PCDecoder(Decoder):
         return recon
 
 
+class MultivariatePCEncoder(Encoder):
+    """
+    Multivariate LPC-style predictive encoder.
+
+    Assumptions about the predictor:
+      - predictor.predict(n) returns a 2D array of shape (n, D)
+      - predictor.update(residuals) consumes a 2D array of shape (n, D)
+      - predictor internally maintains any sliding window / state
+
+    Workflow (per block):
+      1. preds = predictor.predict(n)
+      2. residuals = actual - preds
+      3. residuals quantized independently per sequence
+      4. predictor.update(reconstructed_residuals)
+      5. symbols entropy-coded per sequence
+    """
+
+    def __init__(
+        self,
+        predictor: MultivariatePredictor,
+        coders: list,
+        quantizers: list,
+        n_predictions: int = 1,
+    ):
+        assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
+            "predictor must implement predict(n) and update(residuals_2d)"
+        assert len(coders) == len(quantizers), \
+            "Must provide one coder and quantizer per sequence"
+
+        self.predictor = predictor
+        self.coders = coders
+        self.quantizers = quantizers
+        self.D = len(coders)
+        self.n_predictions = int(n_predictions)
+
+    def encode(self, data: np.ndarray) -> list:
+        """
+        data shape: (T, D)
+        returns: list of bitstreams, one per sequence
+        """
+        data = np.asarray(data, dtype=float)
+        T, D = data.shape
+        assert D == self.D
+
+        all_syms = [[] for _ in range(D)]
+
+        for t in range(0, T, self.n_predictions):
+            block_len = min(self.n_predictions, T - t)
+
+            preds = np.asarray(
+                self.predictor.predict(block_len), dtype=float
+            )
+            assert preds.shape == (block_len, D), \
+                f"predictor.predict({block_len}) must return shape {(block_len, D)}"
+
+            actual = data[t:t + block_len]
+            residuals = actual - preds
+
+            recon_residuals = np.zeros_like(residuals)
+
+            # quantize per sequence
+            for d in range(D):
+                q = self.quantizers[d]
+                syms = [q.value_to_symbol(float(r)) for r in residuals[:, d]]
+                all_syms[d].extend(syms)
+                recon_residuals[:, d] = [q.symbol_to_value(s) for s in syms]
+
+            # predictor feedback uses reconstructed residuals (2D)
+            self.predictor.update(recon_residuals)
+
+        # entropy encode per sequence
+        return [
+            self.coders[d].encode_symbols(all_syms[d])
+            for d in range(D)
+        ]
+
+
+class MultivariatePCDecoder(Decoder):
+    """
+    Multivariate LPC-style predictive decoder.
+
+    Assumptions about the predictor:
+      - predictor.predict(n) returns a 2D array of shape (n, D)
+      - predictor.update(residuals_2d) consumes a 2D array of shape (n, D)
+      - predictor internally maintains any sliding window / state
+
+    Bit-exact inverse of MultivariatePCEncoder.
+    """
+
+    def __init__(
+        self,
+        predictor: MultivariatePredictor,
+        coders: list,
+        quantizers: list,
+        n_predictions: int = 1,
+    ):
+        assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
+            "predictor must implement predict(n) and update(residuals_2d)"
+        assert len(coders) == len(quantizers), \
+            "Must provide one coder and quantizer per sequence"
+
+        self.predictor = predictor
+        self.coders = coders
+        self.quantizers = quantizers
+        self.D = len(coders)
+        self.n_predictions = int(n_predictions)
+
+    def decode(self, bitstreams: list) -> np.ndarray:
+        """
+        bitstreams: list of length D
+        returns: reconstructed array of shape (T, D)
+        """
+        assert len(bitstreams) == self.D
+
+        syms_per_seq = [
+            self.coders[d].decode_symbols(bitstreams[d])
+            for d in range(self.D)
+        ]
+
+        T = len(syms_per_seq[0])
+        recon = np.zeros((T, self.D), dtype=float)
+
+        idx = 0
+        while idx < T:
+            block_len = min(self.n_predictions, T - idx)
+
+            preds = np.asarray(
+                self.predictor.predict(block_len), dtype=float
+            )
+            assert preds.shape == (block_len, self.D)
+
+            recon_residuals = np.zeros((block_len, self.D))
+
+            for d in range(self.D):
+                q = self.quantizers[d]
+                block_syms = syms_per_seq[d][idx:idx + block_len]
+                recon_residuals[:, d] = [q.symbol_to_value(s) for s in block_syms]
+
+            block_recon = preds + recon_residuals
+            recon[idx:idx + block_len] = block_recon
+
+            # predictor feedback must match encoder exactly
+            self.predictor.update(recon_residuals)
+
+            idx += block_len
+
+        return recon
+
+
 class SimpleFrequencyTable(FrequencyTable):
     """
     Simple frequency table implementing the ANS FrequencyTable protocol.
@@ -314,6 +463,79 @@ class StaticResidualRegressor(Predictor):
         else:
             self._window = np.roll(self._window, -total_new)
             self._window[-total_new:] = reconstructed
+
+
+class MultiVariateStaticResidualRegressor(MultivariatePredictor):
+    """
+    A residual-based predictive model for batched (multi-window) inputs.
+
+    Each row of the internal window buffer represents a separate time series window.
+    The wrapped regressor (conforming to MultiVariateRegressorEnvelop) predicts the
+    next `n` values for each window, and the regressor updates its windows using
+    quantized residuals added to the predicted outputs.
+    """
+
+    def __init__(self, regressor: MultiVariateRegressorEnvelop, num_windows: int, input_size: int):
+        """
+        Initialize the batched residual regressor.
+
+        Args:
+            regressor (MultiVariateRegressorEnvelop): The wrapped regressor.
+            num_windows (int): Number of concurrent windows (batch size).
+            input_size (int): Number of samples per input window.
+        """
+        self._regressor = regressor
+        self._num_windows = num_windows
+        self._window_size = input_size
+
+        # Internal states
+        self._windows = np.zeros((num_windows, input_size), dtype=float)
+        self._predictions = np.zeros((num_windows, 0), dtype=float)
+
+    def predict(self, n: int = 1) -> np.ndarray:
+        """
+        Make `n` predictions for each input window.
+
+        Returns:
+            np.ndarray: 2D array of shape [num_windows, n]
+        """
+        preds = self._regressor.predict(n, self._windows)
+
+        assert isinstance(preds, np.ndarray), "Regressor must return a numpy array"
+        assert preds.ndim == 2, f"Expected 2D array output, got {preds.ndim}D"
+        assert preds.shape == (self._num_windows, n), (
+            f"Expected prediction shape ({self._num_windows}, {n}), got {preds.shape}"
+        )
+
+        self._predictions = preds
+        return preds
+
+    def update(self, quantized_residuals: np.ndarray):
+        """
+        Update all input windows with quantized residuals.
+
+        Args:
+            quantized_residuals (np.ndarray): Array of shape [num_windows, n]
+                                              corresponding to last predictions.
+        """
+        quantized_residuals = np.asarray(quantized_residuals, dtype=float)
+
+        assert quantized_residuals.shape == self._predictions.shape, (
+            f"Residual shape {quantized_residuals.shape} must match prediction shape {self._predictions.shape}"
+        )
+
+        reconstructed = self._predictions + quantized_residuals
+
+        n = reconstructed.shape[1]
+        if n >= self._window_size:
+            self._windows = reconstructed[:, -self._window_size:]
+        else:
+            self._windows = np.roll(self._windows, -n, axis=1)
+            self._windows[:, -n:] = reconstructed
+
+        assert self._windows.shape == (self._num_windows, self._window_size), (
+            f"Updated window shape mismatch: expected ({self._num_windows}, {self._window_size}), got {self._windows.shape}"
+        )
 
 
 class ANSEncoder(Encoder):

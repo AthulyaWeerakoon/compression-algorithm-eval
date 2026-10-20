@@ -118,20 +118,20 @@ def train_model():
         output_steps=config.output_steps,
         num_hidden_layers=config.num_hidden_layers,
         hidden_units=config.hidden_units,
-        learning_rate=config.learning_rate,
-        activation=config.activation
+        learning_rate=0.001,
+        activation='relu'
     )
 
     history = model.fit(
         X_train, y_train,
         validation_data=(X_valid, y_valid),
-        epochs=config.epochs,
-        batch_size=config.batch_size,
+        epochs=25,
+        batch_size=64,
         verbose=1,
         callbacks=[
             keras.callbacks.EarlyStopping(
                 monitor='val_loss',
-                patience=10,
+                patience=5,
                 restore_best_weights=True
             ),
             WandbMetricsLogger()
@@ -168,35 +168,21 @@ sweep_config = {
     },
     'parameters': {
         'input_steps': {
-            'values': [4, 6, 8, 10]
+            'values': [4, 6, 8, 10, 15, 25]
         },
         'output_steps': {
-            'values': [1, 2, 3, 4]
+            'values': [1, 2, 3, 4, 5, 9]
         },
         'num_hidden_layers': {
-            'values': [0, 1, 2]
+            'values': [0, 1]
         },
         'hidden_units': {
-            'values': [3, 5, 8, 10, 16]
-        },
-        'learning_rate': {
-            'distribution': 'log_uniform_values',
-            'min': 0.0001,
-            'max': 0.1
-        },
-        'batch_size': {
-            'values': [8, 16, 32, 64]
-        },
-        'epochs': {
-            'value': 100
-        },
-        'activation': {
-            'values': ['relu', 'tanh', 'elu']
+            'values': [3, 5, 7, 9]
         }
     }
 }
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     sweep_id = wandb.sweep(sweep_config, project="nn-air-temperature-hyperparameter")
     wandb.agent(sweep_id, function=train_model, count=20)
