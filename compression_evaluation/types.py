@@ -80,8 +80,8 @@ class MultivariatePredictor(Protocol):
         the quantized residuals that were actually applied.
 
     Expected array shapes:
-      - predict(n): returns np.ndarray of shape [num_windows, n]
-      - update(quantized_values): accepts np.ndarray of shape [num_windows, n]
+      - predict(n): returns np.ndarray of shape [D, n]
+      - update(quantized_values): accepts np.ndarray of shape [D, n]
     """
 
     def predict(self, n: int = 1) -> np.ndarray:
