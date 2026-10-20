@@ -227,11 +227,11 @@ def plot_mixture_over_hist(
         data: Sequence[float],
         mixture: Sequence[ParametricDistribution],
         bin_size: float,
-        x_min: float | None = None,
-        x_max: float | None = None,
+        x_min=None,
+        x_max=None,
         figsize: tuple = (10, 5),
         show: bool = True,
-        title: str | None = None
+        title=None
 ) -> None:
     """
     Plot histogram (using bin_size) and overlay a provided mixture of ParametricDistribution components.
