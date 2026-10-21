@@ -4,6 +4,7 @@
 /dist
 .venv
 __pycache__/
+.ipynb_checkpoints/
 /notebooks/model
 /hyperparameter/model
 /hyperparameter/wandb
