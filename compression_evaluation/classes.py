@@ -120,9 +120,20 @@ class PCEncoder(Encoder):
         self.coder = coder
         self.quantizer = quantizer if quantizer is not None else UniformQuantizer(step=1.0)
         self.n_predictions = int(n_predictions)
+        if self.n_predictions <= 0:
+            raise ValueError("n_predictions must be positive")
 
     def encode(self, data: Sequence[float]) -> bytes:
-        xs = np.asarray(data, dtype=float).ravel()
+        try:
+            xs = np.asarray(data)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("data must be a nonempty finite numeric 1D series") from exc
+        if xs.ndim != 1 or xs.size == 0 or xs.dtype.kind not in "iuf" or not np.all(np.isfinite(xs)):
+            raise ValueError("data must be a nonempty finite numeric 1D series")
+        with np.errstate(over="ignore", invalid="ignore"):
+            xs = xs.astype(float)
+        if not np.all(np.isfinite(xs)):
+            raise ValueError("data must be representable as finite float64")
         n = len(xs)
         all_syms = []
 
@@ -130,8 +141,8 @@ class PCEncoder(Encoder):
             # Handle the last incomplete block properly
             pred_count = min(self.n_predictions, n - i)
             preds = np.asarray(self.predictor.predict(pred_count), dtype=float)
-            assert preds.shape[0] == pred_count, \
-                f"predictor.predict({pred_count}) must return {pred_count} predictions, got {preds.shape[0]}"
+            if preds.shape != (pred_count,):
+                raise ValueError(f"predictor.predict({pred_count}) must return shape {(pred_count,)}")
 
             actual = xs[i:i + pred_count]
             residuals = actual - preds
@@ -172,9 +183,15 @@ class PCDecoder(Decoder):
         self.coder = coder
         self.quantizer = quantizer if quantizer is not None else UniformQuantizer(step=1.0)
         self.n_predictions = int(n_predictions)
+        if self.n_predictions <= 0:
+            raise ValueError("n_predictions must be positive")
 
     def decode(self, bitstream: bytes) -> List[float]:
+        if not isinstance(bitstream, (bytes, bytearray)) or not bitstream:
+            raise ValueError("bitstream must be nonempty bytes")
         syms = self.coder.decode_symbols(bitstream)
+        if not syms:
+            raise ValueError("decoded stream is empty")
         recon = []
         idx = 0
         total_syms = len(syms)
@@ -182,6 +199,8 @@ class PCDecoder(Decoder):
         while idx < total_syms:
             pred_count = min(self.n_predictions, total_syms - idx)
             preds = np.asarray(self.predictor.predict(pred_count), dtype=float)
+            if preds.shape != (pred_count,):
+                raise ValueError(f"predictor.predict({pred_count}) must return shape {(pred_count,)}")
 
             block_syms = syms[idx:idx + pred_count]
             residuals = [self.quantizer.symbol_to_value(sym) for sym in block_syms]
@@ -199,8 +218,8 @@ class MultivariatePCEncoder(Encoder):
     Multivariate LPC-style predictive encoder.
 
     Assumptions about the predictor:
-      - predictor.predict(n) returns a 2D array of shape (n, D)
-      - predictor.update(residuals) consumes a 2D array of shape (n, D)
+      - predictor.predict(n) returns a 2D array of shape (D, n)
+      - predictor.update(residuals) consumes a 2D array of shape (D, n)
       - predictor internally maintains any sliding window / state
 
     Workflow (per block):
@@ -220,64 +239,59 @@ class MultivariatePCEncoder(Encoder):
     ):
         assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
             "predictor must implement predict(n) and update(residuals_2d)"
-        assert len(coders) == len(quantizers), \
-            "Must provide one coder and quantizer per sequence"
+        if len(coders) == 0 or len(coders) != len(quantizers):
+            raise ValueError("Must provide matching nonempty coders and quantizers")
 
         self.predictor = predictor
         self.coders = coders
         self.quantizers = quantizers
         self.D = len(coders)
         self.n_predictions = int(n_predictions)
+        if self.n_predictions <= 0:
+            raise ValueError("n_predictions must be positive")
 
     def encode(self, data: np.ndarray) -> list:
-        """
-        data shape: (T, D)
-        returns: list of bitstreams, one per sequence
-        """
-        data = np.asarray(data, dtype=float)
+        try:
+            data = np.asarray(data)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("data must be finite numeric (T, D) with configured D") from exc
+        if (
+            data.ndim != 2 or not data.shape[0] or data.shape[1] != self.D
+            or data.dtype.kind not in "iuf" or not np.all(np.isfinite(data))
+        ):
+            raise ValueError("data must be finite numeric (T, D) with configured D")
+        try:
+            data = data.astype(float)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("data must be representable as float64") from exc
+        if not np.all(np.isfinite(data)):
+            raise ValueError("data must be representable as finite float64")
         T, D = data.shape
-        assert D == self.D
-
         all_syms = [[] for _ in range(D)]
-
         for t in range(0, T, self.n_predictions):
-            block_len = min(self.n_predictions, T - t)
-
-            preds = np.asarray(
-                self.predictor.predict(block_len), dtype=float
-            )
-            assert preds.shape == (block_len, D), \
-                f"predictor.predict({block_len}) must return shape {(block_len, D)}"
-
-            actual = data[t:t + block_len]
-            residuals = actual - preds
-
-            recon_residuals = np.zeros_like(residuals)
-
-            # quantize per sequence
+            n = min(self.n_predictions, T-t)
+            try:
+                preds = np.asarray(self.predictor.predict(n), dtype=float)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("predictor output must be a numeric array") from exc
+            if preds.shape != (D, n):
+                raise ValueError(f"predictor must return shape {(D,n)}")
+            residuals = data[t:t+n] - preds.T
+            reconstructed = np.zeros_like(residuals)
             for d in range(D):
-                q = self.quantizers[d]
-                syms = [q.value_to_symbol(float(r)) for r in residuals[:, d]]
+                syms = [self.quantizers[d].value_to_symbol(float(x)) for x in residuals[:, d]]
                 all_syms[d].extend(syms)
-                recon_residuals[:, d] = [q.symbol_to_value(s) for s in syms]
-
-            # predictor feedback uses reconstructed residuals (2D)
-            self.predictor.update(recon_residuals)
-
-        # entropy encode per sequence
-        return [
-            self.coders[d].encode_symbols(all_syms[d])
-            for d in range(D)
-        ]
-
+                reconstructed[:, d] = [self.quantizers[d].symbol_to_value(x) for x in syms]
+            self.predictor.update(reconstructed.T)
+        return [self.coders[d].encode_symbols(all_syms[d]) for d in range(D)]
 
 class MultivariatePCDecoder(Decoder):
     """
     Multivariate LPC-style predictive decoder.
 
     Assumptions about the predictor:
-      - predictor.predict(n) returns a 2D array of shape (n, D)
-      - predictor.update(residuals_2d) consumes a 2D array of shape (n, D)
+      - predictor.predict(n) returns a 2D array of shape (D, n)
+      - predictor.update(residuals_2d) consumes a 2D array of shape (D, n)
       - predictor internally maintains any sliding window / state
 
     Bit-exact inverse of MultivariatePCEncoder.
@@ -292,56 +306,33 @@ class MultivariatePCDecoder(Decoder):
     ):
         assert hasattr(predictor, "predict") and hasattr(predictor, "update"), \
             "predictor must implement predict(n) and update(residuals_2d)"
-        assert len(coders) == len(quantizers), \
-            "Must provide one coder and quantizer per sequence"
+        if len(coders) == 0 or len(coders) != len(quantizers):
+            raise ValueError("Must provide matching nonempty coders and quantizers")
 
         self.predictor = predictor
         self.coders = coders
         self.quantizers = quantizers
         self.D = len(coders)
         self.n_predictions = int(n_predictions)
+        if self.n_predictions <= 0:
+            raise ValueError("n_predictions must be positive")
 
     def decode(self, bitstreams: list) -> np.ndarray:
-        """
-        bitstreams: list of length D
-        returns: reconstructed array of shape (T, D)
-        """
-        assert len(bitstreams) == self.D
-
-        syms_per_seq = [
-            self.coders[d].decode_symbols(bitstreams[d])
-            for d in range(self.D)
-        ]
-
-        T = len(syms_per_seq[0])
-        recon = np.zeros((T, self.D), dtype=float)
-
-        idx = 0
-        while idx < T:
-            block_len = min(self.n_predictions, T - idx)
-
-            preds = np.asarray(
-                self.predictor.predict(block_len), dtype=float
-            )
-            assert preds.shape == (block_len, self.D)
-
-            recon_residuals = np.zeros((block_len, self.D))
-
-            for d in range(self.D):
-                q = self.quantizers[d]
-                block_syms = syms_per_seq[d][idx:idx + block_len]
-                recon_residuals[:, d] = [q.symbol_to_value(s) for s in block_syms]
-
-            block_recon = preds + recon_residuals
-            recon[idx:idx + block_len] = block_recon
-
-            # predictor feedback must match encoder exactly
-            self.predictor.update(recon_residuals)
-
-            idx += block_len
-
+        if not isinstance(bitstreams, list) or len(bitstreams) != self.D or any(not isinstance(x, (bytes, bytearray)) or not x for x in bitstreams):
+            raise ValueError("expected exactly D nonempty byte streams")
+        syms = [self.coders[d].decode_symbols(bitstreams[d]) for d in range(self.D)]
+        if not syms[0] or any(len(x) != len(syms[0]) for x in syms):
+            raise ValueError("decoded channel lengths must be equal and nonzero")
+        T = len(syms[0]); recon = np.zeros((T,self.D), dtype=float)
+        for t in range(0,T,self.n_predictions):
+            n=min(self.n_predictions,T-t)
+            preds=np.asarray(self.predictor.predict(n),dtype=float)
+            if preds.shape != (self.D,n): raise ValueError(f"predictor must return shape {(self.D,n)}")
+            residuals=np.empty((n,self.D),dtype=float)
+            for d in range(self.D): residuals[:,d]=[self.quantizers[d].symbol_to_value(x) for x in syms[d][t:t+n]]
+            recon[t:t+n]=preds.T+residuals
+            self.predictor.update(residuals.T)
         return recon
-
 
 class SimpleFrequencyTable(FrequencyTable):
     """
@@ -388,7 +379,7 @@ class SimpleFrequencyTable(FrequencyTable):
 class ANSCoder(Coder):
     """Simple rANS encoder"""
 
-    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer):
+    def __init__(self, freq_table: FrequencyTable, quantizer: Quantizer | None = None):
         self.ft = freq_table
         self.quantizer = quantizer
 

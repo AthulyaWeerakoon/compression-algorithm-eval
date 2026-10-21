@@ -6,10 +6,10 @@ from compression_evaluation.types import RegressorEnvelop, Quantizer
 
 # Demo quantizer that returns positive symbols for preset array of values
 class DemoQuantizer(Quantizer):
-    def symbol_to_residual(self, symbol: int) -> float:
+    def symbol_to_value(self, symbol: int) -> float:
         return symbol - 1
 
-    def residual_to_symbol(self, residual: float) -> int:
+    def value_to_symbol(self, residual: float) -> int:
         return int(residual) + 1
 
 
@@ -30,10 +30,11 @@ if __name__ == "__main__":
 
     # LPC encoder and decoder
     regressor = DemoRegressor()
-    predictor = StaticResidualRegressor(regressor, 5)
+    encoder_predictor = StaticResidualRegressor(regressor, 5)
+    decoder_predictor = StaticResidualRegressor(regressor, 5)
     quantizer = DemoQuantizer()
-    lpc_encoder = PCEncoder(predictor, ans_coder, quantizer, 1)
-    lpc_decoder = PCDecoder(predictor, ans_coder, quantizer, 1)
+    lpc_encoder = PCEncoder(encoder_predictor, ans_coder, quantizer, 1)
+    lpc_decoder = PCDecoder(decoder_predictor, ans_coder, quantizer, 1)
 
     encoded_stream = lpc_encoder.encode(stream)
     print("Encoded stream (bytes):", encoded_stream)
