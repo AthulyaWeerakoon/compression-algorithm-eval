@@ -4,80 +4,20 @@
 **Affiliation:** University of Jaffna, Sri Lanka  
 **License:** MIT License (see `LICENSE` file)
 
----
-
 ## Overview
 
-This repository provides **tools and Jupyter notebooks** for evaluating various **real-time predictive coding compression algorithms**, including **regressive, probabilistic, and hybrid approaches**.
+This repository contains predictive-coding compression tools and research notebooks. The active proof-of-concept notebook is [`notebooks/kan-poc.ipynb`](notebooks/kan-poc.ipynb): it uses a fixed KAN predictor, signed residual ticks, and ANS coding to study the Air Temperature series. It is a fixed proof of concept, not an ideal optimized or deployment model. The notebook imports reusable study helpers from `compression_evaluation.poc` (and plotting helpers from `compression_evaluation.poc_plots`).
 
-The research focuses on:
+The six earlier root notebooks are preserved byte-for-byte under [`notebooks/old_notebooks/`](notebooks/old_notebooks/): `bpc-with-ans.ipynb`, `lpc-with-ans.ipynb`, `mtkan-with-ans-2-precisions copy.ipynb`, `mtkan-with-ans.ipynb`, `neural-network.ipynb`, and `tans.ipynb`. They are archived, not active entry points. Their original relative dataset/import paths may no longer resolve from the archive directory; adjust paths if running them. The two previously archived notebooks remain there unchanged. Checkpoints and image files are not part of this notebook reorganization.
 
-- Comparing **different predictive coding algorithms** for lossy sensor data compression.  
-- Evaluating **compression performance**, reconstruction quality, and computational efficiency.  
-- Providing flexible workflows for testing and analyzing algorithms in real-time scenarios.
+## Dataset and environment
 
----
-
-## Repository Contents
-
-- `utils/` – Python utility methods for running experiments and data handling.  
-- `notebooks/` – Jupyter notebooks demonstrating example compression workflows and experimental setups.  
-- `LICENSE` – MIT License.  
-- `pyproject.toml` – Poetry configuration for dependencies.
-
-**Note:** Datasets are **not included** due to size/privacy considerations. Users must provide their own sensor datasets to run the notebooks.
-
----
-
-## Getting Started
-
-### Requirements
-
-- Python 3.12+  
-- [Poetry](https://python-poetry.org/) for dependency management  
-- Jupyter Notebook or Jupyter Lab  
-
-### Setup Instructions
-
-1. Clone the repository:
-
-    ```bash
-    git clone https://github.com/yourusername/your-repo.git
-    cd your-repo
-    ```
-
-2. Install dependencies and build the project with Poetry:
-
-    ```bash
-    # Install dependencies
-    poetry install
-
-    # Build the package
-    poetry build
-
-    # Activate the environment
-    poetry shell
-    ```
-
-3. Launch a notebook to start experimenting:
-
-    ```bash
-    jupyter notebook
-    # or
-    jupyter lab
-    ```
-
----
+Datasets are not included. The active notebook expects `datasets/AriviyalN_Data_Air_Temperature.csv` at the repository root. It requires Python with NumPy, pandas, matplotlib, PyTorch, pykan, and this local package; its managed GPU environment also uses CUDA-enabled PyTorch. The study-specific notebook dependencies are not declared in Poetry configuration, so `poetry install` alone does not guarantee that the notebook environment is available. Select an environment that already provides these dependencies; the notebook does not install packages. No model, data, or production migration is performed by importing the toolkit.
 
 ## Usage
 
-- Open a notebook from the `notebooks/` folder.  
-- Provide your own sensor dataset.  
-- Run cells to evaluate different predictive coding compression algorithms.  
-- Modify parameters to test regressive, probabilistic, or hybrid approaches.
-
----
+Open `notebooks/kan-poc.ipynb` in Jupyter and run it with the dataset and dependencies available. Its full-suffix evaluation and optional symbolic/CPU timing are validation studies; the final chronological test remains reserved. A previously disclosed test-prefix check is historical provenance only and is not produced by the current run.
 
 ## License
 
-This project is licensed under the MIT License – see the `LICENSE` file for details.
+MIT License; see `LICENSE`.
